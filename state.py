@@ -31,6 +31,7 @@ class AgentState(TypedDict):
     # Agent 2 (ICP Matcher) outputs
     top_prospects: Optional[List[Dict[str, Any]]]
     target_archetype: Optional[str]
+    target_audience: Optional[str]
     
     # Agent 3 (Platform Decision) outputs
     selected_channel: Optional[str]

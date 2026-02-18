@@ -1,10 +1,10 @@
 """
-ICP Matcher Node (Agent 2)
-Finds best prospects from database based on criteria
+ICP Matcher Node (Agent 2) - UPDATED
+Now respects explicit target_audience from user input
 """
 import logging
 import json
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from state import AgentState
 from utils.llm import get_llm
@@ -20,75 +20,107 @@ logger = logging.getLogger(__name__)
 def match_icp(state: AgentState) -> Dict[str, Any]:
     """
     Match prospects from database based on ICP criteria
+    Now prioritizes explicit target_audience over business_behavior
     
     Args:
-        state: Current agent state with location and business_behavior
+        state: Current agent state with location, business_behavior, and target_audience
         
     Returns:
         Updated state with: top_prospects, target_archetype
     """
     location = state.get("location", "")
     business_behavior = state.get("business_behavior", "")
+    target_audience = state.get("target_audience", "any")  # NEW
     
-    logger.info(f"Matching ICP: location={location}, behavior={business_behavior}")
-    
-    # Extract industry and department from business_behavior
-    # Simple heuristic: look for keywords
-    text = business_behavior.lower()
+    logger.info(f"Matching ICP: location={location}, behavior={business_behavior}, target={target_audience}")
     
     industry = None
     department = None
     
-    KEYWORD_RULES = [
-        # Security / Compliance (highest priority)
-        {
-            "keywords": ["cyber", "security", "threat", "breach", "soc"],
-            "industry": "Finance",
-            "department": "IT"
-        },
-        {
-            "keywords": ["compliance", "regulation", "audit", "risk", "governance"],
-            "industry": "Finance",
-            "department": "Finance"
-        },
-        # HR
-        {
-            "keywords": ["hr", "payroll", "recruitment", "human resource"],
-            "industry": None,
-            "department": "HR"
-        },
-        # Finance
-        {
-            "keywords": ["finance", "cfo", "accounting", "financial"],
-            "industry": "Finance",
-            "department": "Finance"
-        },
-        # Marketing / Sales
-        {
-            "keywords": ["marketing", "branding", "ads", "advertising"],
-            "industry": None,
-            "department": "Marketing"
-        },
-        {
-            "keywords": ["sales", "lead generation", "crm"],
-            "industry": None,
-            "department": "Sales"
-        },
-        # Tech fallback
-        {
-            "keywords": ["software", "saas", "platform", "tech"],
-            "industry": "Technology",
-            "department": "Engineering"
-        },
-    ]
+    # PRIORITY 1: Check if user explicitly stated target audience
+    if target_audience and target_audience.lower() != "any":
+        logger.info(f"Using explicit target_audience: {target_audience}")
+        target_lower = target_audience.lower()
+        
+        # Map target_audience to department
+        if any(kw in target_lower for kw in ["security", "ciso", "cyber", "it director", "it manager", "tech", "technology"]):
+            department = "IT"
+            logger.info(f"Mapped '{target_audience}' → IT department")
+        elif any(kw in target_lower for kw in ["hr", "human resource", "people", "talent", "recruitment"]):
+            department = "HR"
+            logger.info(f"Mapped '{target_audience}' → HR department")
+        elif any(kw in target_lower for kw in ["sales", "account executive", "business development", "cro"]):
+            department = "Sales"
+            logger.info(f"Mapped '{target_audience}' → Sales department")
+        elif any(kw in target_lower for kw in ["marketing", "cmo", "brand", "content", "digital"]):
+            department = "Marketing"
+            logger.info(f"Mapped '{target_audience}' → Marketing department")
+        elif any(kw in target_lower for kw in ["finance", "cfo", "accounting", "financial"]):
+            department = "Finance"
+            logger.info(f"Mapped '{target_audience}' → Finance department")
+        elif any(kw in target_lower for kw in ["engineering", "cto", "developer", "software", "devops"]):
+            department = "Engineering"
+            logger.info(f"Mapped '{target_audience}' → Engineering department")
+        elif any(kw in target_lower for kw in ["product", "cpo", "pm"]):
+            department = "Product"
+            logger.info(f"Mapped '{target_audience}' → Product department")
+        elif any(kw in target_lower for kw in ["operations", "coo", "supply chain", "logistics"]):
+            department = "Operations"
+            logger.info(f"Mapped '{target_audience}' → Operations department")
+        elif any(kw in target_lower for kw in ["customer success", "support", "service"]):
+            department = "Customer Success"
+            logger.info(f"Mapped '{target_audience}' → Customer Success department")
     
-    for rule in KEYWORD_RULES:
-        if any(keyword in text for keyword in rule["keywords"]):
-            if not industry and rule["industry"]:
-                industry = rule["industry"]
-            if not department and rule["department"]:
-                department = rule["department"]
-            break
+    # PRIORITY 2: If no explicit target or couldn't map it, fall back to business_behavior
+    if not department:
+        logger.info("No explicit target or couldn't map it, using business_behavior keywords")
+        text = business_behavior.lower()
+        
+        KEYWORD_RULES = [
+            {
+                "keywords": ["cyber", "security", "threat", "breach", "soc"],
+                "industry": "Finance",
+                "department": "IT"
+            },
+            {
+                "keywords": ["compliance", "regulation", "audit", "risk", "governance"],
+                "industry": "Finance",
+                "department": "Finance"
+            },
+            {
+                "keywords": ["hr", "payroll", "recruitment", "human resource"],
+                "industry": None,
+                "department": "HR"
+            },
+            {
+                "keywords": ["finance", "cfo", "accounting", "financial"],
+                "industry": "Finance",
+                "department": "Finance"
+            },
+            {
+                "keywords": ["marketing", "branding", "ads", "advertising"],
+                "industry": None,
+                "department": "Marketing"
+            },
+            {
+                "keywords": ["sales", "lead generation", "crm"],
+                "industry": None,
+                "department": "Sales"
+            },
+            {
+                "keywords": ["software", "saas", "platform", "tech"],
+                "industry": "Technology",
+                "department": "Engineering"
+            },
+        ]
+        
+        for rule in KEYWORD_RULES:
+            if any(keyword in text for keyword in rule["keywords"]):
+                if not industry and rule["industry"]:
+                    industry = rule["industry"]
+                if not department and rule["department"]:
+                    department = rule["department"]
+                break
     
     logger.info(f"Extracted keywords from business_behavior: industry={industry}, department={department}")
     logger.info(f"Will query prospects with these filters")
@@ -107,12 +139,12 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
         
         db.close()
         
-        # Progressive filter relaxation if no results
+        # Progressive fallback if no results
         if not prospects:
             logger.warning(f"No prospects found with industry={industry}, dept={department}, loc={location}")
             db = get_db()
             
-            # Try 1: Relax industry only (keep dept + location)
+            # Try 1: Relax industry, keep department and location
             if department or location:
                 logger.info("Attempting fallback: department and/or location only")
                 prospects = get_top_prospects_by_criteria(
@@ -153,7 +185,7 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
             db.close()
             logger.info(f"Fallback successful: found {len(prospects)} prospects")
         else:
-            logger.info(f"Found {len(prospects)} prospects with exact filters")
+            logger.info(f"Found {len(prospects)} prospects")
         
         # Extract target archetype using LLM
         archetype = "B2B Decision Makers"  # default

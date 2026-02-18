@@ -1,6 +1,7 @@
 """
 Input Parser Node
 Extracts structured fields from natural language input
+FIXED: Now extracts target_audience to preserve explicit user targeting
 """
 import logging
 import json
@@ -22,13 +23,13 @@ def parse_input(state: AgentState) -> Dict[str, Any]:
         state: Current agent state with user_prompt
         
     Returns:
-        Updated state with: time, location, business_behavior, user_intent
+        Updated state with: time, location, business_behavior, user_intent, target_audience
     """
     user_prompt = state.get("user_prompt", "")
     logger.info(f"Parsing input: {user_prompt[:100]}...")
     
     # Create prompt for extraction
-    extraction_prompt = f"""You are a natural language processing system. Extract the following 4 fields from the user's prompt:
+    extraction_prompt = f"""You are a natural language processing system. Extract the following 5 fields from the user's prompt:
 
 USER PROMPT:
 "{user_prompt}"
@@ -37,7 +38,21 @@ FIELDS TO EXTRACT:
 1. time: When the user wants to execute this (e.g., "current", "next week", "Q4 2024", "morning")
 2. location: Geographic location mentioned (e.g., "UK", "San Francisco", "Europe", "remote")
 3. business_behavior: What the user is trying to do/sell (e.g., "selling HR software", "promoting webinar", "re-engaging leads")
-4. user_intent: The core goal or intent (e.g., "generate leads", "book demos", "increase engagement", "build partnerships")
+4. user_intent: The core goal or intent (e.g., "generate leads", "book demos", "increase engagement")
+5. target_audience: WHO the user wants to reach - the specific role, department, or persona they mentioned
+   Examples:
+   - "security staff" or "security teams"
+   - "HR managers" or "human resource directors"
+   - "CTOs" or "IT directors"
+   - "sales managers" or "sales leaders"
+   - "CFOs" or "finance teams"
+   - "marketing directors"
+   - If not explicitly stated, leave as "any"
+
+CRITICAL: The target_audience field is for WHO they want to reach, NOT what they're selling.
+- User says "sell CRM to security staff" → target_audience: "security staff" (NOT "sales teams")
+- User says "pitch HR software to HR managers" → target_audience: "HR managers"
+- User says "reach CTOs about our product" → target_audience: "CTOs"
 
 EXTRACTION RULES:
 - If a field is not explicitly mentioned, infer intelligently from context
@@ -46,6 +61,7 @@ EXTRACTION RULES:
   - location: "any"
   - business_behavior: [infer from prompt]
   - user_intent: [infer from prompt]
+  - target_audience: "any" (only if not mentioned)
 - Be concise but specific
 - Return ONLY valid JSON with NO explanation
 
@@ -54,7 +70,8 @@ REQUIRED OUTPUT FORMAT (JSON ONLY):
     "time": "extracted or inferred time",
     "location": "extracted or inferred location",
     "business_behavior": "extracted or inferred business behavior",
-    "user_intent": "extracted or inferred user intent"
+    "user_intent": "extracted or inferred user intent",
+    "target_audience": "WHO they want to reach, or 'any' if not specified"
 }}
 
 Return ONLY the JSON object, nothing else."""
@@ -86,6 +103,7 @@ Return ONLY the JSON object, nothing else."""
             "location": extracted_data.get("location", "any"),
             "business_behavior": extracted_data.get("business_behavior", "business development"),
             "user_intent": extracted_data.get("user_intent", "generate leads"),
+            "target_audience": extracted_data.get("target_audience", "any"),  # NEW FIELD
         }
         
     except json.JSONDecodeError as e:
@@ -98,6 +116,7 @@ Return ONLY the JSON object, nothing else."""
             "location": "any",
             "business_behavior": "business development",
             "user_intent": "generate leads",
+            "target_audience": "any",
         }
     except Exception as e:
         logger.error(f"Error in input parser: {e}")
@@ -108,4 +127,5 @@ Return ONLY the JSON object, nothing else."""
             "location": "any",
             "business_behavior": "business development",
             "user_intent": "generate leads",
+            "target_audience": "any",
         }
