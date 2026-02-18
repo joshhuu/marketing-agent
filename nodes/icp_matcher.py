@@ -34,32 +34,61 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
     
     # Extract industry and department from business_behavior
     # Simple heuristic: look for keywords
+    text = business_behavior.lower()
+    
     industry = None
     department = None
     
-    # Common patterns
-    if "HR" in business_behavior or "payroll" in business_behavior.lower():
-        department = "HR"
-    elif "IT" in business_behavior or "tech" in business_behavior.lower():
-        department = "IT"
-    elif "finance" in business_behavior.lower() or "CFO" in business_behavior:
-        department = "Finance"
-    elif "marketing" in business_behavior.lower():
-        department = "Marketing"
-    elif "sales" in business_behavior.lower():
-        department = "Sales"
+    KEYWORD_RULES = [
+        # Security / Compliance (highest priority)
+        {
+            "keywords": ["cyber", "security", "threat", "breach", "soc"],
+            "industry": "Finance",
+            "department": "IT"
+        },
+        {
+            "keywords": ["compliance", "regulation", "audit", "risk", "governance"],
+            "industry": "Finance",
+            "department": "Finance"
+        },
+        # HR
+        {
+            "keywords": ["hr", "payroll", "recruitment", "human resource"],
+            "industry": None,
+            "department": "HR"
+        },
+        # Finance
+        {
+            "keywords": ["finance", "cfo", "accounting", "financial"],
+            "industry": "Finance",
+            "department": "Finance"
+        },
+        # Marketing / Sales
+        {
+            "keywords": ["marketing", "branding", "ads", "advertising"],
+            "industry": None,
+            "department": "Marketing"
+        },
+        {
+            "keywords": ["sales", "lead generation", "crm"],
+            "industry": None,
+            "department": "Sales"
+        },
+        # Tech fallback
+        {
+            "keywords": ["software", "saas", "platform", "tech"],
+            "industry": "Technology",
+            "department": "Engineering"
+        },
+    ]
     
-    # Industry keywords
-    if "healthcare" in business_behavior.lower():
-        industry = "Healthcare"
-    elif "tech" in business_behavior.lower() or "software" in business_behavior.lower():
-        industry = "Technology"
-    elif "finance" in business_behavior.lower() or "banking" in business_behavior.lower():
-        industry = "Finance"
-    elif "manufacturing" in business_behavior.lower():
-        industry = "Manufacturing"
-    elif "retail" in business_behavior.lower():
-        industry = "Retail"
+    for rule in KEYWORD_RULES:
+        if any(keyword in text for keyword in rule["keywords"]):
+            if not industry and rule["industry"]:
+                industry = rule["industry"]
+            if not department and rule["department"]:
+                department = rule["department"]
+            break
     
     try:
         # Query database for top prospects
@@ -69,7 +98,7 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
             db=db,
             industry=industry,
             department=department,
-            location=location if location != "any" else None,
+            location=location if location and location.lower() != "any" else None,
             limit=15
         )
         

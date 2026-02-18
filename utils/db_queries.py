@@ -50,7 +50,7 @@ def get_top_prospects_by_criteria(
         ))
     
     if filters:
-        query = query.filter(or_(*filters))
+        query = query.filter(and_(*filters))
     
     # Order by priority score and limit
     prospects = query.order_by(Prospect.priority_score.desc()).limit(limit).all()
@@ -166,6 +166,71 @@ def get_products_by_category(
     
     products = query.all()
     
+    result = []
+    for p in products:
+        # Handle JSONB fields
+        key_benefits_str = ""
+        if p.key_benefits:
+            if isinstance(p.key_benefits, list):
+                key_benefits_str = ", ".join(str(b) for b in p.key_benefits)
+            elif isinstance(p.key_benefits, dict):
+                key_benefits_str = ", ".join(f"{k}: {v}" for k, v in p.key_benefits.items())
+            else:
+                key_benefits_str = str(p.key_benefits)
+        
+        target_persona_str = "B2B Decision Makers"
+        if p.target_seniority:
+            if isinstance(p.target_seniority, list):
+                target_persona_str = ", ".join(str(s) for s in p.target_seniority)
+        
+        result.append({
+            "id": str(p.id),
+            "name": p.name,
+            "category": p.category,
+            "description": p.description,
+            "key_benefits": key_benefits_str,
+            "value_proposition": p.value_proposition,
+            "target_persona": target_persona_str,
+            "pricing_tier": p.price_model,
+            "cta_primary": p.cta_primary,
+            "cta_secondary": p.cta_secondary,
+        })
+    
+    logger.info(f"Found {len(result)} products")
+    return result
+
+
+def get_products_by_keywords(
+    db: Session,
+    keywords: Optional[List[str]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get products by matching keywords in name, description, or benefits
+    
+    Args:
+        db: Database session
+        keywords: List of keywords to search for
+        
+    Returns:
+        List of product dictionaries
+    """
+    logger.info(f"Querying products with keywords: {keywords}")
+    
+    query = db.query(Product)
+    
+    if keywords:
+        # Build OR conditions for each keyword
+        conditions = []
+        for keyword in keywords:
+            conditions.append(Product.name.ilike(f"%{keyword}%"))
+            conditions.append(Product.description.ilike(f"%{keyword}%"))
+            conditions.append(Product.value_proposition.ilike(f"%{keyword}%"))
+        
+        query = query.filter(or_(*conditions))
+    
+    products = query.limit(5).all()
+    
+    # Convert to dictionaries (same format as get_products_by_category)
     result = []
     for p in products:
         # Handle JSONB fields
