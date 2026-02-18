@@ -63,10 +63,30 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
         products = get_products_by_keywords(db=db, keywords=keywords) if keywords else []
         db.close()
         
-        # Use first product or create default based on business_behavior
+        # Score each product by keyword matches and pick the best one
         if products:
-            product_info = products[0]
-            logger.info(f"Using product: {product_info.get('name', 'Unknown')}")
+            logger.info(f"Products found: {[p.get('name') for p in products]}")
+            
+            best_product = None
+            best_score = 0
+            
+            for product in products:
+                score = 0
+                product_text = f"{product.get('name', '')} {product.get('description', '')} {product.get('key_benefits', '')}".lower()
+                
+                # Count keyword matches
+                for keyword in keywords:
+                    if keyword.lower() in product_text:
+                        score += 1
+                
+                # Update best if this scores higher
+                if score > best_score:
+                    best_score = score
+                    best_product = product
+            
+            # Use best match, or first if no keywords matched
+            product_info = best_product if best_product and best_score > 0 else products[0]
+            logger.info(f"Selected product '{product_info.get('name')}' with score {best_score}")
         else:
             logger.warning("No products found, creating context-aware default")
             
@@ -139,6 +159,33 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
         call_script = content_data.get("call_script", {})
         
         logger.info("Content generation successful")
+        
+        # Validate that content mentions key terms from business_behavior
+        validation_keywords = []
+        behavior_lower = business_behavior.lower()
+        
+        # Extract 2-3 most important keywords
+        if "hr" in behavior_lower or "payroll" in behavior_lower:
+            validation_keywords = ["hr", "payroll", "employee"]
+        elif "security" in behavior_lower or "cyber" in behavior_lower:
+            validation_keywords = ["security", "threat", "compliance"]
+        elif "crm" in behavior_lower or "sales" in behavior_lower:
+            validation_keywords = ["sales", "crm", "pipeline"]
+        elif "data" in behavior_lower or "analytics" in behavior_lower:
+            validation_keywords = ["data", "analytics", "reporting"]
+        elif "marketing" in behavior_lower:
+            validation_keywords = ["marketing", "campaign", "outreach"]
+        
+        # Check if content mentions at least ONE validation keyword
+        if validation_keywords:
+            content_text = f"{linkedin_message} {email_message.get('body', '')} {call_script.get('opener', '')}".lower()
+            matches = [kw for kw in validation_keywords if kw in content_text]
+            
+            if not matches:
+                logger.warning(f"Content validation failed: none of {validation_keywords} found in generated content")
+                logger.warning("Content may be too generic or off-topic")
+            else:
+                logger.info(f"Content validation passed: found keywords {matches}")
         
         # Update state
         return {

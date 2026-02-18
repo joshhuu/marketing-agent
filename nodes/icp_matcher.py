@@ -90,6 +90,9 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
                 department = rule["department"]
             break
     
+    logger.info(f"Extracted keywords from business_behavior: industry={industry}, department={department}")
+    logger.info(f"Will query prospects with these filters")
+    
     try:
         # Query database for top prospects
         db = get_db()
@@ -104,14 +107,53 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
         
         db.close()
         
+        # Progressive filter relaxation if no results
         if not prospects:
-            logger.warning("No prospects found matching criteria, using fallback")
-            # Fallback: get any prospects
+            logger.warning(f"No prospects found with industry={industry}, dept={department}, loc={location}")
             db = get_db()
-            prospects = get_top_prospects_by_criteria(db=db, limit=15)
+            
+            # Try 1: Relax industry only (keep dept + location)
+            if department or location:
+                logger.info("Attempting fallback: department and/or location only")
+                prospects = get_top_prospects_by_criteria(
+                    db=db,
+                    industry=None,
+                    department=department,
+                    location=location if location and location.lower() != "any" else None,
+                    limit=15
+                )
+            
+            # Try 2: Department only (most important for targeting)
+            if not prospects and department:
+                logger.info(f"Attempting fallback: {department} department globally")
+                prospects = get_top_prospects_by_criteria(
+                    db=db,
+                    industry=None,
+                    department=department,
+                    location=None,
+                    limit=15
+                )
+            
+            # Try 3: Industry only
+            if not prospects and industry:
+                logger.info(f"Attempting fallback: {industry} industry globally")
+                prospects = get_top_prospects_by_criteria(
+                    db=db,
+                    industry=industry,
+                    department=None,
+                    location=None,
+                    limit=15
+                )
+            
+            # Try 4: Last resort - top prospects by priority
+            if not prospects:
+                logger.warning("All specific filters failed, returning top prospects by priority score")
+                prospects = get_top_prospects_by_criteria(db=db, limit=15)
+            
             db.close()
-        
-        logger.info(f"Found {len(prospects)} prospects")
+            logger.info(f"Fallback successful: found {len(prospects)} prospects")
+        else:
+            logger.info(f"Found {len(prospects)} prospects with exact filters")
         
         # Extract target archetype using LLM
         archetype = "B2B Decision Makers"  # default
