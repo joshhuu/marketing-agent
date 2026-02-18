@@ -1,6 +1,18 @@
-fastapi
-uvicorn
-langgraph
-langchain
-google-genai
-python-dotenv
+# LangGraph and LangChain
+langgraph>=0.0.20
+langchain>=0.1.0
+langchain-google-genai>=1.0.0
+
+# Google AI
+google-generativeai>=0.3.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+
+# Web framework (optional, for API)
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# Utilities
+python-dotenv>=1.0.0

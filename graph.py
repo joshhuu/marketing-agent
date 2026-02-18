@@ -1,117 +1,64 @@
-import os
-from dotenv import load_dotenv
-from typing import TypedDict
-
-from google import genai
+"""
+LangGraph setup for Multi-Agent Marketing System
+Defines the workflow graph connecting all agents
+"""
+import logging
 from langgraph.graph import StateGraph, END
 
-# -----------------------
-# 1. Load Environment
-# -----------------------
+from state import AgentState
+from nodes.input_parser import parse_input
+from nodes.classifier import classify_task
+from nodes.strategy import generate_strategy
+from nodes.icp_matcher import match_icp
+from nodes.platform_decision import decide_platform
+from nodes.content_generator import generate_content
 
-load_dotenv()
-api_key = os.getenv("GOOGLE_API_KEY")
+# Configure logging
+logger = logging.getLogger(__name__)
 
-if not api_key:
-    raise ValueError("GOOGLE_API_KEY not found in environment variables.")
-
-# Create GenAI client (NEW SDK)
-client = genai.Client(api_key=api_key)
-
-MODEL_NAME = "gemini-2.5-flash"
-
-
-# -----------------------
-# 2. Define Graph State
-# -----------------------
-
-class GraphState(TypedDict):
-    user_input: str
-    task_type: str
-    final_response: str
-
-
-# -----------------------
-# 3. Classifier Node
-# -----------------------
-
-def classify_node(state: GraphState) -> GraphState:
-    user_text = state["user_input"]
-
-    prompt = f"""
-    Classify the user request into one of these categories:
-    - marketing
-    - sales
-    - general
-
-    User request: {user_text}
-
-    Only return the category name.
-    """
-
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-    )
-
-    category = response.text.strip().lower()
-
-    # Safety fallback: ensure category is one of the allowed values
-    allowed = ["marketing", "sales", "general"]
-    if category not in allowed:
-        category = "general"
-
-    return {
-        **state,
-        "task_type": category
-    }
-
-
-# -----------------------
-# 4. Content Generator Node
-# -----------------------
-
-def content_node(state: GraphState) -> GraphState:
-    task_type = state["task_type"]
-    user_text = state["user_input"]
-
-    prompt = f"""
-    You are a {task_type} assistant.
-
-    Write a short helpful response for:
-    {user_text}
-    """
-
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=prompt,
-    )
-
-    return {
-        **state,
-        "final_response": response.text.strip()
-    }
-
-
-# -----------------------
-# 5. Build Graph
-# -----------------------
 
 def build_graph():
-    builder = StateGraph(GraphState)
-
-    builder.add_node("classifier", classify_node)
-    builder.add_node("content", content_node)
-
-    builder.set_entry_point("classifier")
-    builder.add_edge("classifier", "content")
-    builder.add_edge("content", END)
-
-    return builder.compile()
-
-
-# -----------------------
-# 6. Compiled Graph Instance
-# -----------------------
-
-app_graph = build_graph()
+    """
+    Constructs the LangGraph StateGraph for the multi-agent system
+    
+    Flow:
+        START 
+        → input_parser 
+        → classifier 
+        → strategy 
+        → icp_matcher 
+        → platform_decision 
+        → content_generator 
+        → END
+    
+    Returns:
+        Compiled graph ready to invoke with initial state
+    """
+    logger.info("Building agent workflow graph")
+    
+    # Create StateGraph with AgentState schema
+    graph = StateGraph(AgentState)
+    
+    # Add nodes (agents)
+    graph.add_node("input_parser", parse_input)
+    graph.add_node("classifier", classify_task)
+    graph.add_node("strategy", generate_strategy)
+    graph.add_node("icp_matcher", match_icp)
+    graph.add_node("platform_decision", decide_platform)
+    graph.add_node("content_generator", generate_content)
+    
+    # Add edges (define sequential flow)
+    graph.add_edge("input_parser", "classifier")
+    graph.add_edge("classifier", "strategy")
+    graph.add_edge("strategy", "icp_matcher")
+    graph.add_edge("icp_matcher", "platform_decision")
+    graph.add_edge("platform_decision", "content_generator")
+    graph.add_edge("content_generator", END)
+    
+    # Set entry point
+    graph.set_entry_point("input_parser")
+    
+    logger.info("Graph construction complete")
+    
+    # Compile and return
+    return graph.compile()
