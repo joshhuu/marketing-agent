@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Target, Clock, Search, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react';
+import { Users, TrendingUp, Target, Clock, Search, ChevronUp, ChevronDown, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ApiClient, ProspectHistory } from '../lib/api';
+import { ProspectDetailModal } from '../components/ProspectDetailModal';
 
 const STATUS_COLORS: Record<string, string> = {
   'New': 'bg-muted text-muted-foreground',
@@ -19,6 +20,7 @@ interface Prospect {
   priority: number;
   timesContacted: number;
   lastContacted: string;
+  fromCampaign?: boolean;
 }
 
 type SortKey = 'priority' | 'name' | 'company';
@@ -50,15 +52,20 @@ export default function ProspectsPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalProspects, setTotalProspects] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     const fetchProspects = async () => {
       try {
         setLoading(true);
         setError(null);
-        const data = await ApiClient.getProspectHistory(0.0, 100, 0);
+        // Fetch paginated prospects from database
+        const response = await ApiClient.getRecentCampaignProspects(50, currentPage);
         
-        const mapped: Prospect[] = data.map((item: ProspectHistory) => ({
+        const mapped: Prospect[] = response.prospects.map((item: ProspectHistory) => ({
           id: item.id,
           name: item.name,
           title: item.job_title,
@@ -67,9 +74,12 @@ export default function ProspectsPage() {
           priority: item.priority_score,
           timesContacted: item.times_contacted,
           lastContacted: formatLastContacted(item.last_contacted_at),
+          fromCampaign: item.from_campaign || false,
         }));
         
         setProspects(mapped);
+        setTotalProspects(response.total);
+        setTotalPages(response.total_pages);
       } catch (err) {
         console.error('Failed to fetch prospects:', err);
         setError('Failed to load prospects. Make sure the backend is running.');
@@ -79,7 +89,7 @@ export default function ProspectsPage() {
     };
 
     fetchProspects();
-  }, []);
+  }, [currentPage]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -107,7 +117,7 @@ export default function ProspectsPage() {
   };
 
   const stats = [
-    { label: 'Total Prospects', value: prospects.length, icon: Users, color: 'text-primary', bg: 'bg-accent' },
+    { label: 'Total Prospects', value: totalProspects, icon: Users, color: 'text-primary', bg: 'bg-accent' },
     { label: 'High Priority', value: prospects.filter(p => p.priority >= 0.85).length, icon: Target, color: 'text-success', bg: 'bg-success/10' },
     { label: 'Contacted', value: prospects.filter(p => p.timesContacted > 0).length, icon: TrendingUp, color: 'text-warning', bg: 'bg-warning/10' },
     { label: 'Avg Priority', value: prospects.length > 0 ? (prospects.reduce((a, p) => a + p.priority, 0) / prospects.length).toFixed(2) : '0.00', icon: Clock, color: 'text-primary', bg: 'bg-primary/10' },
@@ -124,7 +134,7 @@ export default function ProspectsPage() {
             </div>
             <h1 className="text-2xl font-bold text-foreground">Prospects Dashboard</h1>
           </div>
-          <p className="text-muted-foreground">Manage and track all your AI-matched prospects</p>
+          <p className="text-muted-foreground">Browse all prospects in your database with pagination</p>
         </motion.div>
 
         {/* Stats */}
@@ -205,12 +215,13 @@ export default function ProspectsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {filtered.slice(0, 50).map((prospect, i) => (
+                  {filtered.map((prospect, i) => (
                     <motion.tr key={prospect.id}
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.02 * i }}
-                      className="hover:bg-accent/20 transition-colors group">
+                      onClick={() => setSelectedProspectId(prospect.id)}
+                      className="hover:bg-accent/20 transition-colors group cursor-pointer">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0">
@@ -222,7 +233,12 @@ export default function ProspectsPage() {
                       <td className="px-4 py-3 text-sm text-muted-foreground">{prospect.title}</td>
                       <td className="px-4 py-3 text-sm text-foreground font-medium">{prospect.company}</td>
                       <td className="px-4 py-3">
-                        <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{prospect.industry}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{prospect.industry}</span>
+                          {prospect.fromCampaign && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">📊 Campaign</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -243,11 +259,32 @@ export default function ProspectsPage() {
                 </tbody>
               </table>
             </div>
-            {filtered.length > 50 && (
-              <div className="px-4 py-3 border-t border-border/40 text-center text-xs text-muted-foreground">
-                Showing 50 of {filtered.length} prospects
+            
+            {/* Pagination Controls */}
+            <div className="px-4 py-3 border-t border-border/40 flex items-center justify-between">
+              <div className="text-xs text-muted-foreground">
+                Showing page {currentPage} of {totalPages} ({totalProspects} total prospects)
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Previous
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1"
+                >
+                  Next
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+            
             {filtered.length === 0 && (
               <div className="py-12 text-center text-muted-foreground">
                 <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -257,6 +294,12 @@ export default function ProspectsPage() {
           </motion.div>
         )}
       </div>
+
+      {/* Prospect Detail Modal */}
+      <ProspectDetailModal
+        prospectId={selectedProspectId}
+        onClose={() => setSelectedProspectId(null)}
+      />
     </div>
   );
 }

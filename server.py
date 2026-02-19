@@ -742,6 +742,156 @@ async def delete_execution(
         )
 
 
+@app.get("/prospects/recent")
+async def get_recent_campaign_prospects(
+    limit: int = 50,
+    page: int = 1,
+    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Get paginated list of all prospects from the database with total count
+    
+    **Role Required:** Admin or Marketer
+    """
+    logger.info(f"Fetching prospects (page: {page}, limit: {limit})")
+    
+    try:
+        # Get total count of all prospects
+        total_count = db.query(Prospect).count()
+        
+        # Calculate offset for pagination
+        offset = (page - 1) * limit
+        
+        # Get prospects from database with pagination
+        db_prospects = db.query(Prospect)\
+            .order_by(desc(Prospect.priority_score))\
+            .offset(offset)\
+            .limit(limit)\
+            .all()
+        
+        prospect_list = []
+        for prospect in db_prospects:
+            prospect_list.append({
+                "id": str(prospect.id),
+                "name": f"{prospect.first_name} {prospect.last_name}",
+                "first_name": prospect.first_name,
+                "last_name": prospect.last_name,
+                "email": prospect.email,
+                "phone": prospect.phone,
+                "job_title": prospect.job_title,
+                "company_name": prospect.company_name,
+                "industry": prospect.industry,
+                "seniority": prospect.seniority,
+                "department": prospect.department,
+                "priority_score": prospect.priority_score or 0.0,
+                "times_contacted": prospect.times_contacted or 0,
+                "last_contacted_at": prospect.last_contacted_at.isoformat() if prospect.last_contacted_at else None,
+                "from_campaign": False,
+            })
+        
+        total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
+        logger.info(f"Returning {len(prospect_list)} prospects (page {page} of {total_pages}), total: {total_count}")
+        
+        return {
+            "prospects": prospect_list,
+            "total": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching prospects: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve prospects: {str(e)}"
+        )
+
+
+@app.get("/prospects/{prospect_id}")
+async def get_prospect_details(
+    prospect_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Get detailed information for a specific prospect
+    
+    **Role Required:** Admin or Marketer
+    """
+    logger.info(f"Fetching prospect details for ID: {prospect_id}")
+    
+    try:
+        prospect = db.query(Prospect).filter(Prospect.id == prospect_id).first()
+        
+        if not prospect:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prospect {prospect_id} not found"
+            )
+        
+        # Get engagement history for this prospect
+        engagements = db.query(EngagementHistory)\
+            .filter(EngagementHistory.prospect_id == prospect_id)\
+            .order_by(desc(EngagementHistory.sent_at))\
+            .limit(10)\
+            .all()
+        
+        engagement_list = [
+            {
+                "id": str(e.id),
+                "channel": e.channel,
+                "sent_at": e.sent_at.isoformat() if e.sent_at else None,
+                "was_opened": e.was_opened,
+                "was_replied": e.was_replied,
+            }
+            for e in engagements
+        ]
+        
+        return {
+            "id": str(prospect.id),
+            "first_name": prospect.first_name,
+            "last_name": prospect.last_name,
+            "email": prospect.email,
+            "phone": prospect.phone,
+            "linkedin_url": prospect.linkedin_url,
+            "job_title": prospect.job_title,
+            "company_name": prospect.company_name,
+            "company_size": prospect.company_size,
+            "seniority": prospect.seniority,
+            "department": prospect.department,
+            "industry": prospect.industry,
+            "country": prospect.country,
+            "city": prospect.city,
+            "timezone": prospect.timezone,
+            "icp_archetype": prospect.icp_archetype,
+            "icp_score": prospect.icp_score,
+            "priority_score": prospect.priority_score,
+            "is_decision_maker": prospect.is_decision_maker,
+            "preferred_channel": prospect.preferred_channel,
+            "best_contact_time": prospect.best_contact_time,
+            "email_open_rate": prospect.email_open_rate,
+            "linkedin_click_rate": prospect.linkedin_click_rate,
+            "call_answer_rate": prospect.call_answer_rate,
+            "times_contacted": prospect.times_contacted,
+            "last_contacted_at": prospect.last_contacted_at.isoformat() if prospect.last_contacted_at else None,
+            "pain_points": prospect.pain_points,
+            "interests": prospect.interests,
+            "created_at": prospect.created_at.isoformat() if prospect.created_at else None,
+            "engagements": engagement_list,
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching prospect details: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve prospect details: {str(e)}"
+        )
+
+
 @app.get("/history/prospects", response_model=List[ProspectHistoryResponse])
 async def get_prospect_history(
     min_priority_score: float = 0.0,

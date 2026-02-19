@@ -86,6 +86,54 @@ export interface ProspectHistory {
   icp_score: number | null;
   times_contacted: number;
   last_contacted_at: string | null;
+  from_campaign?: boolean;
+}
+
+export interface PaginatedProspects {
+  prospects: ProspectHistory[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}
+
+export interface ProspectDetail {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  linkedin_url: string | null;
+  job_title: string;
+  company_name: string;
+  company_size: string | null;
+  seniority: string;
+  department: string;
+  industry: string;
+  country: string | null;
+  city: string | null;
+  timezone: string | null;
+  icp_archetype: string | null;
+  icp_score: number | null;
+  priority_score: number | null;
+  is_decision_maker: boolean | null;
+  preferred_channel: string | null;
+  best_contact_time: string | null;
+  email_open_rate: number | null;
+  linkedin_click_rate: number | null;
+  call_answer_rate: number | null;
+  times_contacted: number | null;
+  last_contacted_at: string | null;
+  pain_points: string[] | null;
+  interests: string[] | null;
+  created_at: string | null;
+  engagements: Array<{
+    id: string;
+    channel: string;
+    sent_at: string | null;
+    was_opened: boolean;
+    was_replied: boolean;
+  }>;
 }
 
 export class ApiClient {
@@ -284,6 +332,51 @@ export class ApiClient {
 
     if (!response.ok) {
       throw new Error('Failed to fetch prospect history');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get paginated prospects from database
+   */
+  static async getRecentCampaignProspects(
+    limit: number = 50,
+    page: number = 1
+  ): Promise<PaginatedProspects> {
+    const response = await fetch(
+      `${API_BASE_URL}/prospects/recent?limit=${limit}&page=${page}`,
+      {
+        headers: {
+          'X-User-Role': USER_ROLE,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch prospects');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get detailed information for a specific prospect
+   */
+  static async getProspectDetails(
+    prospectId: string
+  ): Promise<ProspectDetail> {
+    const response = await fetch(
+      `${API_BASE_URL}/prospects/${prospectId}`,
+      {
+        headers: {
+          'X-User-Role': USER_ROLE,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch prospect details');
     }
 
     return response.json();
