@@ -278,7 +278,10 @@ def save_classification(
     time: Optional[str] = None,
     location: Optional[str] = None,
     business_behavior: Optional[str] = None,
-    user_intent: Optional[str] = None
+    user_intent: Optional[str] = None,
+    tone: Optional[str] = None,
+    cta_type: Optional[str] = None,
+    urgency_level: Optional[str] = None
 ) -> Classification:
     """
     Save classification result to database
@@ -292,6 +295,9 @@ def save_classification(
         location: Extracted location
         business_behavior: Extracted business behavior
         user_intent: Extracted user intent
+        tone: Communication tone (from strategy)
+        cta_type: Call-to-action type (from strategy)
+        urgency_level: Urgency level (from strategy)
         
     Returns:
         Created Classification object
@@ -304,7 +310,10 @@ def save_classification(
         time_context=time,
         location=location,
         business_behavior=business_behavior,
-        user_intent=user_intent
+        user_intent=user_intent,
+        tone=tone,
+        cta_type=cta_type,
+        urgency_level=urgency_level
     )
     
     db.add(classification)
@@ -312,6 +321,45 @@ def save_classification(
     db.refresh(classification)
     
     logger.info(f"Classification saved with ID={classification.id}")
+    return classification
+
+
+def update_classification_strategy(
+    db: Session,
+    tone: str,
+    cta_type: str,
+    urgency_level: str
+) -> Optional[Classification]:
+    """
+    Update the most recent classification with strategy fields
+    
+    Args:
+        db: Database session
+        tone: Communication tone
+        cta_type: Call-to-action type
+        urgency_level: Urgency level
+        
+    Returns:
+        Updated Classification object or None
+    """
+    logger.info(f"Updating classification with strategy: tone={tone}, cta={cta_type}, urgency={urgency_level}")
+    
+    # Get the most recent classification
+    classification = db.query(Classification).order_by(Classification.created_at.desc()).first()
+    
+    if not classification:
+        logger.error("No classification found to update")
+        return None
+    
+    # Update strategy fields
+    classification.tone = tone
+    classification.cta_type = cta_type
+    classification.urgency_level = urgency_level
+    
+    db.commit()
+    db.refresh(classification)
+    
+    logger.info(f"Classification {classification.id} updated with strategy")
     return classification
 
 

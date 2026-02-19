@@ -10,6 +10,8 @@ from state import AgentState
 from utils.llm import get_llm
 from config import TEMPERATURE_CONFIG
 from prompts.strategy_prompt import get_strategy_prompt
+from database import get_db
+from utils.db_queries import update_classification_strategy
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,12 +31,14 @@ def generate_strategy(state: AgentState) -> Dict[str, Any]:
     user_intent = state.get("user_intent", "")
     time = state.get("time", "")
     business_behavior = state.get("business_behavior", "")
+    user_prompt = state.get("user_prompt", "")
     
     logger.info(f"Generating strategy for category: {category}")
     
     # PRE-DETECT URGENCY from user language
     urgency_override = None
-    combined_text = f"{user_intent} {time} {business_behavior}".lower()
+    # Check both extracted fields AND original prompt for urgency keywords
+    combined_text = f"{user_intent} {time} {business_behavior} {user_prompt}".lower()
     
     HIGH_URGENCY_KEYWORDS = [
         "urgent", "asap", "immediately", "critical", "emergency", "deadline",
@@ -84,6 +88,21 @@ def generate_strategy(state: AgentState) -> Dict[str, Any]:
             logger.info(f"Overriding LLM urgency with detected urgency: {urgency_override}")
         
         logger.info(f"Strategy: tone={tone}, cta={cta_type}, urgency={urgency_level}")
+        
+        # Save strategy to database (update classification)
+        try:
+            db = get_db()
+            update_classification_strategy(
+                db=db,
+                tone=tone,
+                cta_type=cta_type,
+                urgency_level=urgency_level
+            )
+            db.close()
+            logger.info("Strategy saved to classification in database")
+        except Exception as db_error:
+            logger.error(f"Failed to update classification with strategy: {db_error}")
+            # Continue execution even if DB save fails
         
         # Update state
         return {

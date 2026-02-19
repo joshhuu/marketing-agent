@@ -8,6 +8,7 @@ export interface SSEEvent {
   data?: any;
   timestamp: string;
   session_id?: string;
+  classification_id?: string;
 }
 
 export interface ExecutionHistory {
@@ -54,6 +55,7 @@ export interface ExecutionDetail {
     prospects_filtered_count: number;
     selected_channel: string | null;
     channel_reasoning: string | null;
+    created_at: string | null;
     content: {
       linkedin_message: string | null;
       email: {

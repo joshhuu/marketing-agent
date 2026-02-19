@@ -318,7 +318,9 @@ export function CampaignDetailModal({ executionId, onClose }: CampaignDetailModa
 
               {/* Timestamp */}
               <div className="mt-6 pt-4 border-t text-sm text-gray-500">
-                Executed on {new Date(executionDetail.classification.created_at).toLocaleString()}
+                Executed on {new Date(
+                  executionDetail.details?.created_at || executionDetail.classification.created_at
+                ).toLocaleString()}
               </div>
             </div>
           )}

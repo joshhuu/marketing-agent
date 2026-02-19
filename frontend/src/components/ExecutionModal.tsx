@@ -5,6 +5,7 @@ import { StageData, Prospect, CampaignResult } from '../types/campaign';
 import { ApiClient, SSEEvent } from '../lib/api';
 import confetti from 'canvas-confetti';
 import { useToast } from './ui/use-toast';
+import { CampaignDetailModal } from './CampaignDetailModal';
 
 type Stage = 'input_parser' | 'classifier' | 'strategy' | 'icp_matcher' | 'platform' | 'content_generator' | 'complete';
 
@@ -311,6 +312,8 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [isDone, setIsDone] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [classificationId, setClassificationId] = useState<string | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
   const { toast } = useToast();
 
   const reset = useCallback(() => {
@@ -320,6 +323,8 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
     setStageData({});
     setProspects([]);
     setIsDone(false);
+    setClassificationId(null);
+    setShowDetailModal(false);
   }, []);
 
   const fireConfetti = useCallback(() => {
@@ -486,6 +491,9 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
             case 'complete':
               setCurrentStageIdx(6);
               setIsDone(true);
+              if (event.classification_id) {
+                setClassificationId(event.classification_id);
+              }
               fireConfetti();
               break;
 
@@ -553,6 +561,7 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
   if (!open) return null;
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/20 backdrop-blur-sm p-4 overflow-y-auto"
@@ -664,7 +673,7 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                     <button onClick={handleClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-border text-muted-foreground hover:bg-muted transition-colors">
                       Start New Campaign
                     </button>
-                    <button onClick={handleClose} className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold">
+                    <button onClick={() => { setShowDetailModal(true); }} disabled={!classificationId} className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
                       View Campaign →
                     </button>
                   </div>
@@ -675,5 +684,12 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    {/* Campaign Detail Modal */}
+    <CampaignDetailModal
+      executionId={showDetailModal ? classificationId : null}
+      onClose={() => setShowDetailModal(false)}
+    />
+  </>
   );
 }

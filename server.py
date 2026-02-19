@@ -430,18 +430,21 @@ async def stream_agent_execution(
         yield f"data: {json.dumps({'stage': 'content_generator', 'status': 'completed', 'data': final_content, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
         # Save execution details to database
+        classification_id = None
         try:
             from utils.db_queries import save_execution_details
-            db = get_db()
-            save_execution_details(db, state)
+            db = next(get_db_session())
+            execution_detail = save_execution_details(db, state)
+            if execution_detail:
+                classification_id = str(execution_detail.classification_id)
             db.close()
-            logger.info("Execution details saved to database")
+            logger.info(f"Execution details saved to database with classification_id={classification_id}")
         except Exception as db_error:
             logger.error(f"Failed to save execution details: {db_error}")
             # Continue even if save fails
         
         # Final completion
-        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', []))}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'classification_id': classification_id, 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', []))}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
         # Cleanup
         await session_manager.cleanup_session(session_id)
@@ -659,6 +662,7 @@ async def get_execution_details(
                 "prospects_filtered_count": execution_detail.prospects_filtered_count,
                 "selected_channel": execution_detail.selected_channel,
                 "channel_reasoning": execution_detail.channel_reasoning,
+                "created_at": execution_detail.created_at.isoformat() if execution_detail.created_at else None,
                 "content": {
                     "linkedin_message": execution_detail.linkedin_message,
                     "email": {

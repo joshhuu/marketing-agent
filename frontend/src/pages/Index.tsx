@@ -107,7 +107,7 @@ export default function Index() {
                   value={prompt}
                   onChange={handleInput}
                   onKeyDown={handleKeyDown}
-                  placeholder="Example: I'm Sarah from TechFlow selling cybersecurity to IT directors in London. Need to book demos this week..."
+                  placeholder="Example: I'm selling HR payroll software to HR managers at mid-sized companies in the UK. Need to generate leads ASAP."
                   rows={5}
                   className="w-full bg-transparent text-foreground placeholder:text-muted-foreground/60 text-base leading-relaxed resize-none outline-none px-5 pt-5 pb-3 rounded-xl font-sans"
                   style={{ minHeight: '140px', maxHeight: '280px' }}
