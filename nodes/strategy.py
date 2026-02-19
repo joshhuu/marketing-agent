@@ -26,8 +26,33 @@ def generate_strategy(state: AgentState) -> Dict[str, Any]:
         Updated state with: tone, cta_type, urgency_level
     """
     category = state.get("category", "B2B_lead_gen")
+    user_intent = state.get("user_intent", "")
+    time = state.get("time", "")
+    business_behavior = state.get("business_behavior", "")
     
     logger.info(f"Generating strategy for category: {category}")
+    
+    # PRE-DETECT URGENCY from user language
+    urgency_override = None
+    combined_text = f"{user_intent} {time} {business_behavior}".lower()
+    
+    HIGH_URGENCY_KEYWORDS = [
+        "urgent", "asap", "immediately", "critical", "emergency", "deadline",
+        "time-sensitive", "quick", "fast", "now", "today", "this week",
+        "q1", "q2", "q3", "q4", "quarter", "month-end", "year-end"
+    ]
+    
+    LOW_URGENCY_KEYWORDS = [
+        "explore", "research", "learn", "eventually", "someday", 
+        "long-term", "future", "considering"
+    ]
+    
+    if any(kw in combined_text for kw in HIGH_URGENCY_KEYWORDS):
+        urgency_override = "high"
+        logger.info(f"Detected HIGH urgency from keywords in user input")
+    elif any(kw in combined_text for kw in LOW_URGENCY_KEYWORDS):
+        urgency_override = "low"
+        logger.info(f"Detected LOW urgency from keywords in user input")
     
     # Generate prompt
     prompt = get_strategy_prompt(category)
@@ -50,9 +75,13 @@ def generate_strategy(state: AgentState) -> Dict[str, Any]:
         # Parse JSON response
         strategy_data = json.loads(response_text)
         
-        tone = strategy_data.get("tone", "professional")
+        tone = strategy_data.get("tone", "solution_focused")
         cta_type = strategy_data.get("cta_type", "book_demo")
-        urgency_level = strategy_data.get("urgency_level", "medium")
+        urgency_level = urgency_override or strategy_data.get("urgency_level", "medium")
+        
+        # Override urgency if we detected it from user language
+        if urgency_override:
+            logger.info(f"Overriding LLM urgency with detected urgency: {urgency_override}")
         
         logger.info(f"Strategy: tone={tone}, cta={cta_type}, urgency={urgency_level}")
         
@@ -70,15 +99,15 @@ def generate_strategy(state: AgentState) -> Dict[str, Any]:
         # Fallback to defaults
         return {
             **state,
-            "tone": "professional",
+            "tone": "solution_focused",
             "cta_type": "book_demo",
-            "urgency_level": "medium",
+            "urgency_level": urgency_override or "medium",
         }
     except Exception as e:
         logger.error(f"Error in strategy generation: {e}")
         return {
             **state,
-            "tone": "professional",
+            "tone": "solution_focused",
             "cta_type": "book_demo",
-            "urgency_level": "medium",
+            "urgency_level": urgency_override or "medium",
         }

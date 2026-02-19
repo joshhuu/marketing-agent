@@ -63,30 +63,85 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
         products = get_products_by_keywords(db=db, keywords=keywords) if keywords else []
         db.close()
         
-        # Score each product by keyword matches and pick the best one
+        # ENHANCED PRODUCT SCORING ALGORITHM
+        # Scores products based on multiple factors:
+        # 1. Keyword match count (primary)
+        # 2. Keyword match location (name > value_prop > description)
+        # 3. Department/industry alignment with target audience
+        # 4. Archetype match
         if products:
             logger.info(f"Products found: {[p.get('name') for p in products]}")
             
             best_product = None
             best_score = 0
             
+            # Get target context for better matching
+            target_dept = top_prospects[0].get("department", "") if top_prospects else ""
+            target_industry = top_prospects[0].get("industry", "") if top_prospects else ""
+            
             for product in products:
                 score = 0
-                product_text = f"{product.get('name', '')} {product.get('description', '')} {product.get('key_benefits', '')}".lower()
                 
-                # Count keyword matches
+                # Factor 1: Keyword matches (weighted by location)
+                product_name = product.get('name', '').lower()
+                product_value_prop = product.get('value_proposition', '').lower()
+                product_desc = product.get('description', '').lower()
+                product_benefits = product.get('key_benefits', '').lower()
+                
                 for keyword in keywords:
-                    if keyword.lower() in product_text:
+                    kw_lower = keyword.lower()
+                    # Name match: 5 points (most important)
+                    if kw_lower in product_name:
+                        score += 5
+                    # Value proposition match: 3 points
+                    if kw_lower in product_value_prop:
+                        score += 3
+                    # Benefits match: 2 points
+                    if kw_lower in product_benefits:
+                        score += 2
+                    # Description match: 1 point (least specific)
+                    if kw_lower in product_desc:
                         score += 1
+                
+                # Factor 2: Target persona alignment (if we have prospect data)
+                if target_dept:
+                    product_persona = product.get('target_persona', '').lower()
+                    if target_dept.lower() in product_persona:
+                        score += 3
+                        logger.debug(f"Product {product_name} matches target dept {target_dept}: +3")
+                
+                # Factor 3: Industry relevance (if product category matches industry)
+                if target_industry:
+                    product_category = product.get('category', '').lower()
+                    if target_industry.lower() in product_category or product_category in target_industry.lower():
+                        score += 2
+                        logger.debug(f"Product {product_name} matches industry {target_industry}: +2")
+                
+                # Factor 4: Archetype match (extract from target_persona)
+                if target_archetype:
+                    archetype_lower = target_archetype.lower()
+                    product_persona = product.get('target_persona', '').lower()
+                    # Check if archetype contains key roles mentioned in product targeting
+                    archetype_keywords = ["ceo", "cfo", "cmo", "cto", "ciso", "manager", "director", "vp"]
+                    for ak in archetype_keywords:
+                        if ak in archetype_lower and ak in product_persona:
+                            score += 2
+                            break
+                
+                logger.debug(f"Product '{product.get('name')}' scored {score} points")
                 
                 # Update best if this scores higher
                 if score > best_score:
                     best_score = score
                     best_product = product
             
-            # Use best match, or first if no keywords matched
-            product_info = best_product if best_product and best_score > 0 else products[0]
-            logger.info(f"Selected product '{product_info.get('name')}' with score {best_score}")
+            # Use best match, or first if no keywords matched (fallback)
+            if best_product and best_score > 0:
+                product_info = best_product
+                logger.info(f"Selected product '{product_info.get('name')}' with score {best_score}")
+            else:
+                product_info = products[0]
+                logger.info(f"No strong match, using first product '{product_info.get('name')}'")
         else:
             logger.warning("No products found, creating context-aware default")
             

@@ -33,6 +33,9 @@ class AgentState(TypedDict):
     target_archetype: Optional[str]
     target_audience: Optional[str]
     
+    # Engagement Analyzer outputs (NEW)
+    prospects_filtered_count: Optional[int]  # How many prospects filtered due to recent contact
+    
     # Agent 3 (Platform Decision) outputs
     selected_channel: Optional[str]
     channel_reasoning: Optional[str]
