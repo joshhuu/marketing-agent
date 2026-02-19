@@ -124,7 +124,7 @@ export default function ProspectsPage() {
   ];
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-full gradient-bg">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">

@@ -109,7 +109,7 @@ export default function HistoryPage() {
   );
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-full gradient-bg">
       {/* Success Toast */}
       {successMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">

@@ -13,7 +13,7 @@ const EXAMPLES = [
   "Reach out to sales directors at tech startups about our new CRM tool. Want to book demos next week.",
 ];
 
-export default function Index() {
+export default function Campaign() {
   const [prompt, setPrompt] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [submittedPrompt, setSubmittedPrompt] = useState('');
@@ -63,7 +63,7 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen gradient-bg flex flex-col">
+    <div className="min-h-full gradient-bg flex flex-col">
       {/* Ambient blobs */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
