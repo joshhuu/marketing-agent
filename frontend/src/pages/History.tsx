@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { History, ExternalLink, Search, Filter, Trash2, AlertCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ApiClient, ExecutionHistory } from '../lib/api';
-import { CampaignDetailModal } from '../components/CampaignDetailModal';
 
 interface CampaignHistoryItem {
   id: string;
@@ -30,11 +29,11 @@ function formatDate(dateStr: string): string {
 }
 
 export default function HistoryPage() {
+  const navigate = useNavigate();
   const [campaigns, setCampaigns] = useState<CampaignHistoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -127,7 +126,7 @@ export default function HistoryPage() {
         </div>
       )}
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -205,7 +204,7 @@ export default function HistoryPage() {
               <div className="text-center py-16 text-muted-foreground">
                 <History className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">No campaigns found</p>
-                <p className="text-sm mt-1">Try a different search or <Link to="/" className="text-primary hover:underline">create a new campaign</Link></p>
+                <p className="text-sm mt-1">Try a different search or <Link to="/campaign" className="text-primary hover:underline">create a new campaign</Link></p>
               </div>
             ) : (
               filtered.map((campaign, i) => (
@@ -215,7 +214,7 @@ export default function HistoryPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 + i * 0.06 }}
                   className="card-glass rounded-xl p-4 group hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => setSelectedExecutionId(campaign.id)}
+                  onClick={() => navigate(`/history/${campaign.id}`)}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -252,18 +251,12 @@ export default function HistoryPage() {
 
         {!loading && !error && filtered.length > 0 && (
           <div className="text-center mt-8">
-            <Link to="/" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold">
+            <Link to="/campaign" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold">
               + New Campaign
             </Link>
           </div>
         )}
       </div>
-
-      {/* Campaign Detail Modal */}
-      <CampaignDetailModal
-        executionId={selectedExecutionId}
-        onClose={() => setSelectedExecutionId(null)}
-      />
 
       {/* Delete Confirmation Dialog */}
       {deleteConfirmId && (

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, Circle, Loader2, Copy, Check, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { StageData, Prospect, CampaignResult } from '../types/campaign';
 import { ApiClient, SSEEvent } from '../lib/api';
 import confetti from 'canvas-confetti';
 import { useToast } from './ui/use-toast';
-import { CampaignDetailModal } from './CampaignDetailModal';
+import { FormattedText } from '../lib/formatters';
 
 type Stage = 'input_parser' | 'classifier' | 'strategy' | 'icp_matcher' | 'platform' | 'content_generator' | 'complete';
 
@@ -309,14 +310,16 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
                       <div className="relative">
                         {stageData.contentGenerator.personalizedContent[selectedProspectIndex] && (
                           <>
-                            <pre className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono max-h-52 overflow-y-auto">
-                              {activeTab === 'linkedin' 
-                                ? stageData.contentGenerator.personalizedContent[selectedProspectIndex].linkedin_message
-                                : activeTab === 'email'
-                                ? `Subject: ${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.subject}\n\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.body}`
-                                : `Opener:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.opener}\n\nObjections:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.objections.join('\n\n')}\n\nClose:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.close}`
-                              }
-                            </pre>
+                            <div className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+                              <FormattedText>
+                                {activeTab === 'linkedin' 
+                                  ? stageData.contentGenerator.personalizedContent[selectedProspectIndex].linkedin_message
+                                  : activeTab === 'email'
+                                  ? `Subject: ${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.subject}\n\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.body}`
+                                  : `Opener:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.opener}\n\nObjections:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.objections.join('\n\n')}\n\nClose:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.close}`
+                                }
+                              </FormattedText>
+                            </div>
                             <div className="absolute top-2 right-2">
                               <CopyButton text={
                                 activeTab === 'linkedin' 
@@ -342,11 +345,13 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
                         ))}
                       </div>
                       <div className="relative">
-                        <pre className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono max-h-52 overflow-y-auto">
-                          {activeTab === 'linkedin' ? stageData.contentGenerator.linkedin :
-                            activeTab === 'email' ? stageData.contentGenerator.email :
-                              stageData.contentGenerator.callScript}
-                        </pre>
+                        <div className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+                          <FormattedText>
+                            {activeTab === 'linkedin' ? stageData.contentGenerator.linkedin :
+                              activeTab === 'email' ? stageData.contentGenerator.email :
+                                stageData.contentGenerator.callScript}
+                          </FormattedText>
+                        </div>
                         <div className="absolute top-2 right-2">
                           <CopyButton text={
                             activeTab === 'linkedin' ? stageData.contentGenerator!.linkedin :
@@ -369,6 +374,7 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
 }
 
 export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionModalProps) {
+  const navigate = useNavigate();
   const [currentStageIdx, setCurrentStageIdx] = useState(-1);
   const [completedStages, setCompletedStages] = useState<Stage[]>([]);
   const [waitingApproval, setWaitingApproval] = useState(false);
@@ -377,7 +383,6 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
   const [isDone, setIsDone] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [classificationId, setClassificationId] = useState<string | null>(null);
-  const [showDetailModal, setShowDetailModal] = useState(false);
   const { toast } = useToast();
 
   const reset = useCallback(() => {
@@ -388,7 +393,6 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
     setProspects([]);
     setIsDone(false);
     setClassificationId(null);
-    setShowDetailModal(false);
   }, []);
 
   const fireConfetti = useCallback(() => {
@@ -742,7 +746,16 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                     <button onClick={handleClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold border border-border text-muted-foreground hover:bg-muted transition-colors">
                       Start New Campaign
                     </button>
-                    <button onClick={() => { setShowDetailModal(true); }} disabled={!classificationId} className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed">
+                    <button 
+                      onClick={() => { 
+                        if (classificationId) {
+                          handleClose();
+                          navigate(`/history/${classificationId}`);
+                        }
+                      }} 
+                      disabled={!classificationId} 
+                      className="btn-primary px-5 py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       View Campaign →
                     </button>
                   </div>
@@ -753,12 +766,6 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
         </motion.div>
       </motion.div>
     </AnimatePresence>
-
-    {/* Campaign Detail Modal */}
-    <CampaignDetailModal
-      executionId={showDetailModal ? classificationId : null}
-      onClose={() => setShowDetailModal(false)}
-    />
   </>
   );
 }
