@@ -123,13 +123,13 @@ Return ONLY the JSON object, nothing else."""
 
 def generate_content(state: AgentState) -> Dict[str, Any]:
     """
-    Generate personalized content for LinkedIn, Email, and Call
+    Generate personalized content for LinkedIn, Email, and Call for ALL prospects
     
     Args:
         state: Current agent state with all previous data
         
     Returns:
-        Updated state with: linkedin_message, email_message, call_script
+        Updated state with: personalized_content (list), and legacy fields for backward compatibility
     """
     tone = state.get("tone", "professional")
     cta_type = state.get("cta_type", "book_demo")
@@ -140,7 +140,7 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
     top_prospects = state.get("top_prospects", [])
     sender_name = state.get("sender_name", "Joshua")  # NEW: Get sender name
     
-    logger.info(f"Generating content: tone={tone}, cta={cta_type}")
+    logger.info(f"Generating personalized content for {len(top_prospects)} prospects: tone={tone}, cta={cta_type}")
     
     try:
         # Extract keywords from business_behavior to match products
@@ -257,50 +257,124 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
                 category=category
             )
         
-        # Get sample prospect for personalization
-        prospect_sample = {}
-        if top_prospects:
-            prospect_sample = top_prospects[0]
-        else:
-            prospect_sample = {
+        # ============================================================
+        # GENERATE PERSONALIZED CONTENT FOR EACH PROSPECT
+        # ============================================================
+        personalized_content = []
+        
+        if not top_prospects:
+            # No prospects, create one generic entry
+            top_prospects = [{
+                "id": "unknown",
                 "name": "Prospect",
                 "job_title": "Decision Maker",
                 "company_name": "Company",
                 "pain_points": ["Operational challenges", "Process inefficiencies"],
-            }
+            }]
         
-        # Generate prompt
-        prompt = get_content_prompt(
-            tone=tone,
-            cta_type=cta_type,
-            urgency_level=urgency_level,
-            target_archetype=target_archetype,
-            product_info=product_info,
-            prospect_sample=prospect_sample,  # Pass this for context
-            sender_name=sender_name  # NEW: Pass sender name
-        )
+        logger.info(f"Generating content for {len(top_prospects)} prospects...")
         
-        # Get LLM with higher temperature for creative content
-        llm = get_llm(temperature=TEMPERATURE_CONFIG["content_generator"])
+        for prospect in top_prospects:
+            prospect_id = prospect.get("id", "unknown")
+            prospect_name = prospect.get("name", "Prospect")
+            
+            logger.info(f"Generating content for {prospect_name} (ID: {prospect_id})")
+            
+            try:
+                # Generate prompt for this specific prospect
+                prompt = get_content_prompt(
+                    tone=tone,
+                    cta_type=cta_type,
+                    urgency_level=urgency_level,
+                    target_archetype=target_archetype,
+                    product_info=product_info,
+                    prospect_sample=prospect,  # Use this specific prospect
+                    sender_name=sender_name
+                )
+                
+                # Get LLM with higher temperature for creative content
+                llm = get_llm(temperature=TEMPERATURE_CONFIG["content_generator"])
+                
+                response = llm.invoke(prompt)
+                response_text = response.content.strip()
+                
+                # Remove markdown code blocks if present
+                if response_text.startswith("```"):
+                    response_text = response_text.split("```")[1]
+                    if response_text.startswith("json"):
+                        response_text = response_text[4:]
+                    response_text = response_text.strip()
+                
+                # Parse JSON response
+                content_data = json.loads(response_text)
+                
+                # Store personalized content for this prospect
+                personalized_content.append({
+                    "prospect_id": prospect_id,
+                    "prospect_name": prospect_name,
+                    "prospect_company": prospect.get("company_name", ""),
+                    "prospect_job_title": prospect.get("job_title", ""),
+                    "linkedin_message": content_data.get("linkedin_message", ""),
+                    "email_message": content_data.get("email_message", {}),
+                    "call_script": content_data.get("call_script", {}),
+                })
+                
+                logger.info(f"Content generated successfully for {prospect_name}")
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse JSON response for {prospect_name}: {e}")
+                logger.error(f"Response was: {response_text[:200]}...")
+                
+                # Create fallback content for this prospect
+                personalized_content.append({
+                    "prospect_id": prospect_id,
+                    "prospect_name": prospect_name,
+                    "prospect_company": prospect.get("company_name", ""),
+                    "prospect_job_title": prospect.get("job_title", ""),
+                    "linkedin_message": f"Hi {prospect_name.split()[0]}, I noticed you're in {target_archetype}. Would love to connect and share how we can help. Interested in a quick chat?",
+                    "email_message": {
+                        "subject": "Quick question about your workflows",
+                        "body": f"Hi {prospect_name.split()[0]},\n\nI hope this email finds you well. I wanted to reach out because we work with similar companies to help optimize their operations.\n\nWould you be open to a brief conversation?\n\nBest regards,\n{sender_name}"
+                    },
+                    "call_script": {
+                        "opener": f"Hi {prospect_name.split()[0]}, this is {sender_name} calling about optimizing your current workflows. Do you have a moment?",
+                        "objections": [
+                            "I understand you're busy. This will only take 2 minutes.",
+                            "Many of our clients felt the same way initially.",
+                            "No commitment needed, just exploring if there's a fit."
+                        ],
+                        "close": "Great! Let me send you a calendar invite for next week. Does Tuesday or Wednesday work better for you?"
+                    },
+                })
+                
+            except Exception as e:
+                logger.error(f"Error generating content for {prospect_name}: {e}")
+                
+                # Create minimal fallback for this prospect
+                personalized_content.append({
+                    "prospect_id": prospect_id,
+                    "prospect_name": prospect_name,
+                    "prospect_company": prospect.get("company_name", ""),
+                    "prospect_job_title": prospect.get("job_title", ""),
+                    "linkedin_message": f"Hi {prospect_name.split()[0]}, Let's connect!",
+                    "email_message": {"subject": "Following up", "body": f"Hi {prospect_name.split()[0]}, wanted to reach out. - {sender_name}"},
+                    "call_script": {"opener": f"Hi {prospect_name.split()[0]}", "objections": ["I understand"], "close": "Thanks!"},
+                })
         
-        response = llm.invoke(prompt)
-        response_text = response.content.strip()
+        # ============================================================
+        # BACKWARD COMPATIBILITY: Use first prospect's content
+        # ============================================================
+        first_content = personalized_content[0] if personalized_content else {
+            "linkedin_message": "Let's connect!",
+            "email_message": {"subject": "Following up", "body": "Hi, wanted to reach out."},
+            "call_script": {"opener": "Hi there", "objections": ["I understand"], "close": "Thanks!"},
+        }
         
-        # Remove markdown code blocks if present
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-            response_text = response_text.strip()
+        linkedin_message = first_content.get("linkedin_message", "")
+        email_message = first_content.get("email_message", {})
+        call_script = first_content.get("call_script", {})
         
-        # Parse JSON response
-        content_data = json.loads(response_text)
-        
-        linkedin_message = content_data.get("linkedin_message", "")
-        email_message = content_data.get("email_message", {})
-        call_script = content_data.get("call_script", {})
-        
-        logger.info("Content generation successful")
+        logger.info(f"Content generation successful for {len(personalized_content)} prospects")
         
         # Validate that content mentions key terms from business_behavior
         validation_keywords = []
@@ -329,42 +403,22 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
             else:
                 logger.info(f"Content validation passed: found keywords {matches}")
         
-        # Update state
+        # Update state with personalized content + backward compatible fields
         return {
             **state,
-            "linkedin_message": linkedin_message,
-            "email_message": email_message,
-            "call_script": call_script,
+            "personalized_content": personalized_content,  # NEW: List of personalized content
+            "linkedin_message": linkedin_message,  # Legacy field
+            "email_message": email_message,  # Legacy field
+            "call_script": call_script,  # Legacy field
         }
         
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response: {e}")
-        logger.error(f"Response was: {response_text[:200]}...")
-        
-        # Create fallback content
-        return {
-            **state,
-            "linkedin_message": f"Hi, I noticed you're in {target_archetype}. Would love to connect and share how we can help. Interested in a quick chat?",
-            "email_message": {
-                "subject": "Quick question about your workflows",
-                "body": "Hi,\n\nI hope this email finds you well. I wanted to reach out because we work with similar companies to help optimize their operations.\n\nWould you be open to a brief conversation?\n\nBest regards"
-            },
-            "call_script": {
-                "opener": "Hi, this is calling about optimizing your current workflows. Do you have a moment?",
-                "objections": [
-                    "I understand you're busy. This will only take 2 minutes.",
-                    "Many of our clients felt the same way initially.",
-                    "No commitment needed, just exploring if there's a fit."
-                ],
-                "close": "Great! Let me send you a calendar invite for next week. Does Tuesday or Wednesday work better for you?"
-            },
-        }
     except Exception as e:
-        logger.error(f"Error in content generation: {e}")
+        logger.error(f"Critical error in content generation: {e}")
         
-        # Return minimal fallback
+        # Return minimal fallback with personalized_content as empty list
         return {
             **state,
+            "personalized_content": [],
             "linkedin_message": "Let's connect!",
             "email_message": {"subject": "Following up", "body": "Hi, wanted to reach out."},
             "call_script": {"opener": "Hi there", "objections": ["I understand"], "close": "Thanks!"},

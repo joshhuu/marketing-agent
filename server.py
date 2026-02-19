@@ -419,12 +419,16 @@ async def stream_agent_execution(
         yield f"data: {json.dumps({'stage': 'content_generator', 'status': 'started', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         state = generate_content(state)
         
-        # Prepare final content response
+        # Prepare final content response with personalized content
+        personalized_content = state.get('personalized_content', [])
+        
         final_content = {
-            "linkedin_message": state.get('linkedin_message'),
+            "personalized_content": personalized_content,  # NEW: List of personalized content per prospect
+            "linkedin_message": state.get('linkedin_message'),  # Legacy field (first prospect)
             "email_message": state.get('email_message'),
             "call_script": state.get('call_script'),
-            "selected_channel": state.get('selected_channel')
+            "selected_channel": state.get('selected_channel'),
+            "prospect_count": len(personalized_content)  # How many prospects got personalized content
         }
         
         yield f"data: {json.dumps({'stage': 'content_generator', 'status': 'completed', 'data': final_content, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
@@ -663,6 +667,7 @@ async def get_execution_details(
                 "selected_channel": execution_detail.selected_channel,
                 "channel_reasoning": execution_detail.channel_reasoning,
                 "created_at": execution_detail.created_at.isoformat() if execution_detail.created_at else None,
+                "personalized_content": execution_detail.personalized_content or [],  # NEW: Personalized content for each prospect
                 "content": {
                     "linkedin_message": execution_detail.linkedin_message,
                     "email": {

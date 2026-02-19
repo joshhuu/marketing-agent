@@ -10,6 +10,23 @@ export interface Prospect {
   selected: boolean;
 }
 
+export interface PersonalizedContent {
+  prospect_id: string;
+  prospect_name: string;
+  prospect_company: string;
+  prospect_job_title: string;
+  linkedin_message: string;
+  email_message: {
+    subject: string;
+    body: string;
+  };
+  call_script: {
+    opener: string;
+    objections: string[];
+    close: string;
+  };
+}
+
 export interface StageData {
   inputParser?: {
     time: string;
@@ -40,6 +57,7 @@ export interface StageData {
     linkedin: string;
     email: string;
     callScript: string;
+    personalizedContent?: PersonalizedContent[];  // NEW: All personalized content
   };
 }
 

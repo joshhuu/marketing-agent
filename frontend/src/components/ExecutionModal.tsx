@@ -79,6 +79,7 @@ interface StageItemProps {
 
 function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, setProspects }: StageItemProps) {
   const [activeTab, setActiveTab] = useState<'linkedin' | 'email' | 'call'>('linkedin');
+  const [selectedProspectIndex, setSelectedProspectIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
   const isDone = status === 'done';
@@ -270,29 +271,92 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
 
               {stage.id === 'content_generator' && stageData.contentGenerator && (
                 <div className="space-y-3">
-                  {isActive && <p className="text-sm text-muted-foreground italic">Generating personalized content...</p>}
-                  <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
-                    {(['linkedin', 'email', 'call'] as const).map(tab => (
-                      <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold capitalize transition-all ${activeTab === tab ? 'bg-card shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
-                        {tab === 'linkedin' ? '💼 LinkedIn' : tab === 'email' ? '📧 Email' : '📞 Call Script'}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="relative">
-                    <pre className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono max-h-52 overflow-y-auto">
-                      {activeTab === 'linkedin' ? stageData.contentGenerator.linkedin :
-                        activeTab === 'email' ? stageData.contentGenerator.email :
-                          stageData.contentGenerator.callScript}
-                    </pre>
-                    <div className="absolute top-2 right-2">
-                      <CopyButton text={
-                        activeTab === 'linkedin' ? stageData.contentGenerator!.linkedin :
-                          activeTab === 'email' ? stageData.contentGenerator!.email :
-                            stageData.contentGenerator!.callScript
-                      } />
-                    </div>
-                  </div>
+                  {isActive && <p className="text-sm text-muted-foreground italic">Generating personalized content for all prospects...</p>}
+                  
+                  {/* Show personalized content if available, otherwise show legacy content */}
+                  {stageData.contentGenerator.personalizedContent && stageData.contentGenerator.personalizedContent.length > 0 ? (
+                    <>
+                      {/* Prospect Selector */}
+                      <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border border-border">
+                        <span className="text-sm font-medium text-foreground">View content for:</span>
+                        <select
+                          value={selectedProspectIndex}
+                          onChange={(e) => setSelectedProspectIndex(Number(e.target.value))}
+                          className="flex-1 px-3 py-1.5 text-sm bg-card border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          {stageData.contentGenerator.personalizedContent.map((pc, idx) => (
+                            <option key={pc.prospect_id} value={idx}>
+                              {pc.prospect_name} — {pc.prospect_job_title} at {pc.prospect_company}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {selectedProspectIndex + 1} / {stageData.contentGenerator.personalizedContent.length}
+                        </span>
+                      </div>
+
+                      {/* Content Tabs */}
+                      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+                        {(['linkedin', 'email', 'call'] as const).map(tab => (
+                          <button key={tab} onClick={() => setActiveTab(tab)}
+                            className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold capitalize transition-all ${activeTab === tab ? 'bg-card shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                            {tab === 'linkedin' ? '💼 LinkedIn' : tab === 'email' ? '📧 Email' : '📞 Call Script'}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Personalized Content Display */}
+                      <div className="relative">
+                        {stageData.contentGenerator.personalizedContent[selectedProspectIndex] && (
+                          <>
+                            <pre className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono max-h-52 overflow-y-auto">
+                              {activeTab === 'linkedin' 
+                                ? stageData.contentGenerator.personalizedContent[selectedProspectIndex].linkedin_message
+                                : activeTab === 'email'
+                                ? `Subject: ${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.subject}\n\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.body}`
+                                : `Opener:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.opener}\n\nObjections:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.objections.join('\n\n')}\n\nClose:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.close}`
+                              }
+                            </pre>
+                            <div className="absolute top-2 right-2">
+                              <CopyButton text={
+                                activeTab === 'linkedin' 
+                                  ? stageData.contentGenerator.personalizedContent[selectedProspectIndex].linkedin_message
+                                  : activeTab === 'email'
+                                  ? `Subject: ${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.subject}\n\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].email_message.body}`
+                                  : `Opener:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.opener}\n\nObjections:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.objections.join('\n\n')}\n\nClose:\n${stageData.contentGenerator.personalizedContent[selectedProspectIndex].call_script.close}`
+                              } />
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Legacy Content Display (fallback for backward compatibility) */}
+                      <div className="flex gap-1 bg-muted/50 rounded-lg p-1">
+                        {(['linkedin', 'email', 'call'] as const).map(tab => (
+                          <button key={tab} onClick={() => setActiveTab(tab)}
+                            className={`flex-1 py-1.5 px-2 rounded-md text-xs font-semibold capitalize transition-all ${activeTab === tab ? 'bg-card shadow-sm text-primary' : 'text-muted-foreground hover:text-foreground'}`}>
+                            {tab === 'linkedin' ? '💼 LinkedIn' : tab === 'email' ? '📧 Email' : '📞 Call Script'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="relative">
+                        <pre className="bg-card border border-border rounded-xl p-4 text-xs text-foreground whitespace-pre-wrap leading-relaxed font-mono max-h-52 overflow-y-auto">
+                          {activeTab === 'linkedin' ? stageData.contentGenerator.linkedin :
+                            activeTab === 'email' ? stageData.contentGenerator.email :
+                              stageData.contentGenerator.callScript}
+                        </pre>
+                        <div className="absolute top-2 right-2">
+                          <CopyButton text={
+                            activeTab === 'linkedin' ? stageData.contentGenerator!.linkedin :
+                              activeTab === 'email' ? stageData.contentGenerator!.email :
+                                stageData.contentGenerator!.callScript
+                          } />
+                        </div>
+                      </div>
+                    </>
+                  )}
                   {isActive && <ProgressBar active />}
                 </div>
               )}
@@ -468,6 +532,10 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
               if (event.status === 'started') {
                 setCurrentStageIdx(5);
               } else if (event.status === 'completed' && event.data) {
+                // Handle personalized content for each prospect
+                const personalizedContent = event.data.personalized_content || [];
+                
+                // Legacy fields (for backward compatibility, use first prospect)
                 const linkedin = event.data.linkedin_message || 'LinkedIn message...';
                 const email = event.data.email_message
                   ? `Subject: ${event.data.email_message.subject}\n\n${event.data.email_message.body}`
@@ -482,6 +550,7 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                     linkedin,
                     email,
                     callScript,
+                    personalizedContent,  // NEW: Store all personalized content
                   },
                 }));
                 setCompletedStages(prev => [...prev, 'content_generator']);
@@ -659,8 +728,8 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                   <div className="flex flex-wrap justify-center gap-4 mb-6">
                     {[
                       `${selectedCount} prospects targeted`,
-                      `${stageData.platform?.selected ?? 'LinkedIn'} messages ready`,
-                      'Content personalized',
+                      `${stageData.contentGenerator?.personalizedContent?.length || selectedCount} personalized messages`,
+                      `${stageData.platform?.selected ?? 'LinkedIn'} ready`,
                     ].map((label, i) => (
                       <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + i * 0.1 }}
                         className="flex items-center gap-1.5 text-sm text-success font-medium">

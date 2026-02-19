@@ -414,6 +414,9 @@ def save_execution_details(
     product_name = state.get('product_name', '')
     product_value_prop = state.get('product_value_proposition', '')
     
+    # Get personalized content (NEW)
+    personalized_content = state.get('personalized_content', [])
+    
     execution_detail = ExecutionDetail(
         classification_id=classification.id,
         sender_name=state.get('sender_name'),
@@ -424,7 +427,8 @@ def save_execution_details(
         prospects_filtered_count=state.get('prospects_filtered_count', len(top_prospects)),
         selected_channel=state.get('selected_channel'),
         channel_reasoning=state.get('channel_reasoning'),
-        linkedin_message=state.get('linkedin_message'),
+        personalized_content=personalized_content,  # NEW: Store all personalized content
+        linkedin_message=state.get('linkedin_message'),  # Legacy field
         email_subject=email_subject,
         email_body=email_body,
         call_script_opener=call_opener,

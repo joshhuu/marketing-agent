@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { ApiClient, ExecutionDetail } from '../lib/api';
+import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
 
 interface CampaignDetailModalProps {
   executionId: string | null;
@@ -19,6 +19,7 @@ export function CampaignDetailModal({ executionId, onClose }: CampaignDetailModa
     platformDecision: true,
     content: true,
   });
+  const [selectedProspectIndex, setSelectedProspectIndex] = useState(0);
 
   useEffect(() => {
     if (executionId) {
@@ -209,89 +210,211 @@ export function CampaignDetailModal({ executionId, onClose }: CampaignDetailModa
                     onToggle={() => toggleSection('content')}
                   >
                     <div className="space-y-6">
-                      {/* LinkedIn Message */}
-                      {executionDetail.details.content.linkedin_message && (
-                        <div>
-                          <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
-                            <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                            LinkedIn Message
-                          </h4>
-                          <div className="bg-gray-50 rounded-lg p-4 border">
-                            <p className="text-gray-700 whitespace-pre-wrap">
-                              {executionDetail.details.content.linkedin_message}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Email */}
-                      {executionDetail.details.content.email.subject && (
-                        <div>
-                          <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
-                            <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                            Email
-                          </h4>
-                          <div className="bg-gray-50 rounded-lg p-4 border space-y-3">
-                            <div>
-                              <p className="text-xs text-gray-500 uppercase font-medium mb-1">Subject</p>
-                              <p className="text-gray-900 font-medium">
-                                {executionDetail.details.content.email.subject}
-                              </p>
+                      {/* Check if personalized content is available */}
+                      {executionDetail.details.personalized_content && 
+                       executionDetail.details.personalized_content.length > 0 ? (
+                        <>
+                          {/* Personalized Content View */}
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <span className="text-blue-600 font-semibold text-sm">
+                                🎯 Personalized Content for {executionDetail.details.personalized_content.length} Prospects
+                              </span>
                             </div>
-                            <div>
-                              <p className="text-xs text-gray-500 uppercase font-medium mb-1">Body</p>
-                              <p className="text-gray-700 whitespace-pre-wrap">
-                                {executionDetail.details.content.email.body}
-                              </p>
+                            <div className="flex items-center gap-3">
+                              <label className="text-sm font-medium text-gray-700">View content for:</label>
+                              <select
+                                value={selectedProspectIndex}
+                                onChange={(e) => setSelectedProspectIndex(Number(e.target.value))}
+                                className="flex-1 px-3 py-2 text-sm bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                {executionDetail.details.personalized_content.map((pc, idx) => (
+                                  <option key={pc.prospect_id} value={idx}>
+                                    {pc.prospect_name} — {pc.prospect_job_title} at {pc.prospect_company}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {selectedProspectIndex + 1} / {executionDetail.details.personalized_content.length}
+                              </span>
                             </div>
                           </div>
-                        </div>
-                      )}
 
-                      {/* Call Script */}
-                      {executionDetail.details.content.call_script.opener && (
-                        <div>
-                          <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
-                            <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                            Call Script
-                          </h4>
-                          <div className="bg-gray-50 rounded-lg p-4 border space-y-4">
-                            <div>
-                              <p className="text-xs text-gray-500 uppercase font-medium mb-1">Opener</p>
-                              <p className="text-gray-700 whitespace-pre-wrap">
-                                {executionDetail.details.content.call_script.opener}
-                              </p>
-                            </div>
-                            
-                            {executionDetail.details.content.call_script.objections &&
-                              executionDetail.details.content.call_script.objections.length > 0 && (
+                          {/* Display selected prospect's content */}
+                          {executionDetail.details.personalized_content[selectedProspectIndex] && (
+                            <>
+                              {/* LinkedIn Message */}
+                              {executionDetail.details.personalized_content[selectedProspectIndex].linkedin_message && (
                                 <div>
-                                  <p className="text-xs text-gray-500 uppercase font-medium mb-2">
-                                    Objection Handling
-                                  </p>
-                                  <div className="space-y-2">
-                                    {executionDetail.details.content.call_script.objections.map((obj, idx) => (
-                                      <div key={idx} className="bg-white rounded p-3 border">
-                                        <p className="text-sm font-medium text-gray-700 mb-1">
-                                          Objection: {obj.objection}
-                                        </p>
-                                        <p className="text-sm text-gray-600">Response: {obj.response}</p>
-                                      </div>
-                                    ))}
+                                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                    LinkedIn Message
+                                  </h4>
+                                  <div className="bg-gray-50 rounded-lg p-4 border">
+                                    <p className="text-gray-700 whitespace-pre-wrap">
+                                      {executionDetail.details.personalized_content[selectedProspectIndex].linkedin_message}
+                                    </p>
                                   </div>
                                 </div>
                               )}
 
-                            {executionDetail.details.content.call_script.close && (
-                              <div>
-                                <p className="text-xs text-gray-500 uppercase font-medium mb-1">Close</p>
+                              {/* Email */}
+                              {executionDetail.details.personalized_content[selectedProspectIndex].email_message && (
+                                <div>
+                                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                    Email
+                                  </h4>
+                                  <div className="bg-gray-50 rounded-lg p-4 border space-y-3">
+                                    <div>
+                                      <p className="text-xs text-gray-500 uppercase font-medium mb-1">Subject</p>
+                                      <p className="text-gray-900 font-medium">
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].email_message.subject}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-gray-500 uppercase font-medium mb-1">Body</p>
+                                      <p className="text-gray-700 whitespace-pre-wrap">
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].email_message.body}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Call Script */}
+                              {executionDetail.details.personalized_content[selectedProspectIndex].call_script && (
+                                <div>
+                                  <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                    <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                                    Call Script
+                                  </h4>
+                                  <div className="bg-gray-50 rounded-lg p-4 border space-y-4">
+                                    <div>
+                                      <p className="text-xs text-gray-500 uppercase font-medium mb-1">Opener</p>
+                                      <p className="text-gray-700 whitespace-pre-wrap">
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].call_script.opener}
+                                      </p>
+                                    </div>
+                                    
+                                    {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections &&
+                                      executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.length > 0 && (
+                                        <div>
+                                          <p className="text-xs text-gray-500 uppercase font-medium mb-2">
+                                            Objection Handling
+                                          </p>
+                                          <div className="space-y-2">
+                                            {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.map((obj, idx) => (
+                                              <div key={idx} className="bg-white rounded p-3 border">
+                                                <p className="text-sm text-gray-700">{obj}</p>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                    {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close && (
+                                      <div>
+                                        <p className="text-xs text-gray-500 uppercase font-medium mb-1">Close</p>
+                                        <p className="text-gray-700 whitespace-pre-wrap">
+                                          {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {/* Legacy Content Display (fallback for backward compatibility) */}
+                          {/* LinkedIn Message */}
+                          {executionDetail.details.content.linkedin_message && (
+                            <div>
+                              <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
+                                LinkedIn Message
+                              </h4>
+                              <div className="bg-gray-50 rounded-lg p-4 border">
                                 <p className="text-gray-700 whitespace-pre-wrap">
-                                  {executionDetail.details.content.call_script.close}
+                                  {executionDetail.details.content.linkedin_message}
                                 </p>
                               </div>
-                            )}
-                          </div>
-                        </div>
+                            </div>
+                          )}
+
+                          {/* Email */}
+                          {executionDetail.details.content.email.subject && (
+                            <div>
+                              <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
+                                Email
+                              </h4>
+                              <div className="bg-gray-50 rounded-lg p-4 border space-y-3">
+                                <div>
+                                  <p className="text-xs text-gray-500 uppercase font-medium mb-1">Subject</p>
+                                  <p className="text-gray-900 font-medium">
+                                    {executionDetail.details.content.email.subject}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500 uppercase font-medium mb-1">Body</p>
+                                  <p className="text-gray-700 whitespace-pre-wrap">
+                                    {executionDetail.details.content.email.body}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Call Script */}
+                          {executionDetail.details.content.call_script.opener && (
+                            <div>
+                              <h4 className="font-semibold text-gray-700 mb-2 flex items-center">
+                                <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
+                                Call Script
+                              </h4>
+                              <div className="bg-gray-50 rounded-lg p-4 border space-y-4">
+                                <div>
+                                  <p className="text-xs text-gray-500 uppercase font-medium mb-1">Opener</p>
+                                  <p className="text-gray-700 whitespace-pre-wrap">
+                                    {executionDetail.details.content.call_script.opener}
+                                  </p>
+                                </div>
+                                
+                                {executionDetail.details.content.call_script.objections &&
+                                  executionDetail.details.content.call_script.objections.length > 0 && (
+                                    <div>
+                                      <p className="text-xs text-gray-500 uppercase font-medium mb-2">
+                                        Objection Handling
+                                      </p>
+                                      <div className="space-y-2">
+                                        {executionDetail.details.content.call_script.objections.map((obj, idx) => (
+                                          <div key={idx} className="bg-white rounded p-3 border">
+                                            <p className="text-sm font-medium text-gray-700 mb-1">
+                                              Objection: {obj.objection}
+                                            </p>
+                                            <p className="text-sm text-gray-600">Response: {obj.response}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                {executionDetail.details.content.call_script.close && (
+                                  <div>
+                                    <p className="text-xs text-gray-500 uppercase font-medium mb-1">Close</p>
+                                    <p className="text-gray-700 whitespace-pre-wrap">
+                                      {executionDetail.details.content.call_script.close}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Product Info */}

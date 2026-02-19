@@ -173,6 +173,7 @@ class ExecutionDetail(Base):
     channel_reasoning = Column(Text)
     
     # Content Generator outputs
+    personalized_content = Column(JSON)  # NEW: List of personalized content for each prospect
     linkedin_message = Column(Text)
     email_subject = Column(String(200))
     email_body = Column(Text)

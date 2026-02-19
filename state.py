@@ -42,6 +42,10 @@ class AgentState(TypedDict):
     channel_reasoning: Optional[str]
     
     # Agent 4 (Content Generator) outputs
+    # Personalized content for each prospect
+    personalized_content: Optional[List[Dict[str, Any]]]  # List of {prospect_id, prospect_name, linkedin_message, email_message, call_script}
+    
+    # Legacy fields (for backward compatibility)
     linkedin_message: Optional[str]
     email_message: Optional[Dict[str, str]]  # {subject: str, body: str}
     call_script: Optional[Dict[str, Any]]    # {opener: str, objections: list, close: str}

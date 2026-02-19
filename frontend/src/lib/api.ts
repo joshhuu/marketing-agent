@@ -25,6 +25,23 @@ export interface ExecutionHistory {
   created_at: string;
 }
 
+export interface PersonalizedContent {
+  prospect_id: string;
+  prospect_name: string;
+  prospect_company: string;
+  prospect_job_title: string;
+  linkedin_message: string;
+  email_message: {
+    subject: string;
+    body: string;
+  };
+  call_script: {
+    opener: string;
+    objections: string[];
+    close: string;
+  };
+}
+
 export interface ExecutionDetail {
   classification: {
     id: string;
@@ -56,6 +73,7 @@ export interface ExecutionDetail {
     selected_channel: string | null;
     channel_reasoning: string | null;
     created_at: string | null;
+    personalized_content: PersonalizedContent[];  // NEW: Personalized content for each prospect
     content: {
       linkedin_message: string | null;
       email: {
