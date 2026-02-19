@@ -19,7 +19,7 @@ from sqlalchemy import desc
 
 from graph import build_graph
 from state import AgentState
-from database import get_db_session, Classification, EngagementHistory, Prospect
+from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail
 from config import LOG_LEVEL
 
 # Configure logging
@@ -429,6 +429,17 @@ async def stream_agent_execution(
         
         yield f"data: {json.dumps({'stage': 'content_generator', 'status': 'completed', 'data': final_content, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
+        # Save execution details to database
+        try:
+            from utils.db_queries import save_execution_details
+            db = get_db()
+            save_execution_details(db, state)
+            db.close()
+            logger.info("Execution details saved to database")
+        except Exception as db_error:
+            logger.error(f"Failed to save execution details: {db_error}")
+            # Continue even if save fails
+        
         # Final completion
         yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', []))}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
@@ -569,6 +580,165 @@ async def get_execution_history(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve execution history: {str(e)}"
+        )
+
+
+@app.get("/history/executions/{execution_id}/details")
+async def get_execution_details(
+    execution_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Retrieve detailed execution information for a specific campaign
+    
+    **Role Required:** Admin or Marketer
+    
+    Returns full agent workflow results including classification, prospects,
+    platform decision, and generated content.
+    
+    **Headers:**
+    - X-User-Role: "marketer" or "admin"
+    """
+    logger.info(f"Fetching execution details for ID: {execution_id}")
+    
+    try:
+        # Fetch the classification
+        classification = db.query(Classification).filter(Classification.id == execution_id).first()
+        if not classification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution {execution_id} not found"
+            )
+        
+        # Fetch the execution details
+        execution_detail = db.query(ExecutionDetail)\
+            .filter(ExecutionDetail.classification_id == execution_id)\
+            .first()
+        
+        if not execution_detail:
+            # Return basic classification info if no details available
+            return {
+                "classification": {
+                    "id": str(classification.id),
+                    "time_context": classification.time_context,
+                    "location": classification.location,
+                    "business_behavior": classification.business_behavior,
+                    "user_intent": classification.user_intent,
+                    "category": classification.category,
+                    "confidence": classification.confidence,
+                    "tone": classification.tone,
+                    "cta_type": classification.cta_type,
+                    "urgency_level": classification.urgency_level,
+                    "created_at": classification.created_at.isoformat() if classification.created_at else None
+                },
+                "details": None
+            }
+        
+        # Return full details
+        return {
+            "classification": {
+                "id": str(classification.id),
+                "time_context": classification.time_context,
+                "location": classification.location,
+                "business_behavior": classification.business_behavior,
+                "user_intent": classification.user_intent,
+                "category": classification.category,
+                "confidence": classification.confidence,
+                "tone": classification.tone,
+                "cta_type": classification.cta_type,
+                "urgency_level": classification.urgency_level,
+                "created_at": classification.created_at.isoformat() if classification.created_at else None
+            },
+            "details": {
+                "sender_name": execution_detail.sender_name,
+                "target_audience": execution_detail.target_audience,
+                "target_archetype": execution_detail.target_archetype,
+                "prospects": execution_detail.prospects_found or [],
+                "prospects_count": execution_detail.prospects_count,
+                "prospects_filtered_count": execution_detail.prospects_filtered_count,
+                "selected_channel": execution_detail.selected_channel,
+                "channel_reasoning": execution_detail.channel_reasoning,
+                "content": {
+                    "linkedin_message": execution_detail.linkedin_message,
+                    "email": {
+                        "subject": execution_detail.email_subject,
+                        "body": execution_detail.email_body
+                    },
+                    "call_script": {
+                        "opener": execution_detail.call_script_opener,
+                        "objections": execution_detail.call_script_objections or [],
+                        "close": execution_detail.call_script_close
+                    }
+                },
+                "product": {
+                    "name": execution_detail.product_name,
+                    "value_proposition": execution_detail.product_value_prop
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching execution details: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve execution details: {str(e)}"
+        )
+
+
+@app.delete("/history/executions/{execution_id}")
+async def delete_execution(
+    execution_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Delete a campaign execution and its details from the database
+    
+    **Role Required:** Admin or Marketer
+    
+    **Headers:**
+    - X-User-Role: "marketer" or "admin"
+    """
+    logger.info(f"Deleting execution ID: {execution_id}")
+    
+    try:
+        # Fetch the classification
+        classification = db.query(Classification).filter(Classification.id == execution_id).first()
+        if not classification:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution {execution_id} not found"
+            )
+        
+        # Delete execution details first (foreign key constraint)
+        db.query(ExecutionDetail)\
+            .filter(ExecutionDetail.classification_id == execution_id)\
+            .delete()
+        
+        # Delete the classification
+        db.delete(classification)
+        db.commit()
+        
+        logger.info(f"Successfully deleted execution {execution_id}")
+        
+        return {
+            "success": True,
+            "message": "Campaign execution deleted successfully",
+            "execution_id": execution_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting execution: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete execution: {str(e)}"
         )
 
 

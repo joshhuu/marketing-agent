@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, Integer
 
-from database import Prospect, Product, EngagementHistory, Classification
+from database import Prospect, Product, EngagementHistory, Classification, ExecutionDetail
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -313,6 +313,85 @@ def save_classification(
     
     logger.info(f"Classification saved with ID={classification.id}")
     return classification
+
+
+def save_execution_details(
+    db: Session,
+    state: Dict[str, Any]
+) -> Optional[ExecutionDetail]:
+    """
+    Save complete execution details after workflow completes
+    
+    Args:
+        db: Database session
+        state: Complete agent state with all workflow outputs
+        
+    Returns:
+        Created ExecutionDetail object or None if classification not found
+    """
+    logger.info("Saving execution details")
+    
+    # Find the most recent classification (it was saved by the classifier node)
+    classification = db.query(Classification).order_by(Classification.created_at.desc()).first()
+    
+    if not classification:
+        logger.error("No classification found to link execution details")
+        return None
+    
+    # Extract email message parts
+    email_message = state.get('email_message', {})
+    email_subject = email_message.get('subject', '') if isinstance(email_message, dict) else ''
+    email_body = email_message.get('body', '') if isinstance(email_message, dict) else ''
+    
+    # Extract call script parts
+    call_script = state.get('call_script', {})
+    call_opener = call_script.get('opener', '') if isinstance(call_script, dict) else ''
+    call_objections = call_script.get('objection_responses', []) if isinstance(call_script, dict) else []
+    call_close = call_script.get('close', '') if isinstance(call_script, dict) else ''
+    
+    # Extract prospect data
+    top_prospects = state.get('top_prospects', [])
+    prospects_data = []
+    for p in top_prospects[:10]:  # Store top 10 prospects
+        prospects_data.append({
+            "id": p.get('id'),
+            "name": p.get('name'),
+            "job_title": p.get('job_title'),
+            "company": p.get('company_name'),
+            "industry": p.get('industry'),
+            "priority_score": p.get('priority_score'),
+        })
+    
+    # Get product info if available
+    product_name = state.get('product_name', '')
+    product_value_prop = state.get('product_value_proposition', '')
+    
+    execution_detail = ExecutionDetail(
+        classification_id=classification.id,
+        sender_name=state.get('sender_name'),
+        target_audience=state.get('target_audience'),
+        target_archetype=state.get('target_archetype'),
+        prospects_found=prospects_data,
+        prospects_count=len(top_prospects),
+        prospects_filtered_count=state.get('prospects_filtered_count', len(top_prospects)),
+        selected_channel=state.get('selected_channel'),
+        channel_reasoning=state.get('channel_reasoning'),
+        linkedin_message=state.get('linkedin_message'),
+        email_subject=email_subject,
+        email_body=email_body,
+        call_script_opener=call_opener,
+        call_script_objections=call_objections,
+        call_script_close=call_close,
+        product_name=product_name,
+        product_value_prop=product_value_prop,
+    )
+    
+    db.add(execution_detail)
+    db.commit()
+    db.refresh(execution_detail)
+    
+    logger.info(f"Execution details saved with ID={execution_detail.id}")
+    return execution_detail
 
 
 # ========================================================================

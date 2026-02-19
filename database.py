@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from typing import Generator
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
@@ -145,6 +145,44 @@ class Classification(Base):
     tone = Column(String(50))
     cta_type = Column(String(50))
     urgency_level = Column(String(30))
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ExecutionDetail(Base):
+    """Model for storing complete agent execution details"""
+    __tablename__ = "execution_details"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    classification_id = Column(UUID(as_uuid=True), ForeignKey('classifications.id'), nullable=False)
+    
+    # Input Parser outputs
+    sender_name = Column(String(100))
+    target_audience = Column(String(200))
+    
+    # ICP Matcher outputs
+    target_archetype = Column(String(200))
+    prospects_found = Column(JSON)  # List of prospect dictionaries
+    prospects_count = Column(Float, default=0)
+    
+    # Engagement Analyzer outputs
+    prospects_filtered_count = Column(Float, default=0)
+    
+    # Platform Decision outputs
+    selected_channel = Column(String(50))
+    channel_reasoning = Column(Text)
+    
+    # Content Generator outputs
+    linkedin_message = Column(Text)
+    email_subject = Column(String(200))
+    email_body = Column(Text)
+    call_script_opener = Column(Text)
+    call_script_objections = Column(JSON)  # List of objection responses
+    call_script_close = Column(Text)
+    
+    # Product info used
+    product_name = Column(String(200))
+    product_value_prop = Column(Text)
     
     created_at = Column(DateTime, default=datetime.utcnow)
 

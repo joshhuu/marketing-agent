@@ -40,6 +40,10 @@ FIELDS TO EXTRACT:
 3. business_behavior: What the user is trying to do/sell (e.g., "selling HR software", "promoting webinar", "re-engaging leads")
 4. user_intent: The core goal or intent (e.g., "generate leads", "book demos", "increase engagement")
 5. target_audience: WHO the user wants to reach - the specific role, department, or persona they mentioned
+6. sender_name: The name of the person sending the campaign (e.g., "Sarah", "John", "Mike")
+   - Look for phrases like "hi this is [name]", "I'm [name]", "my name is [name]", "[name] here"
+   - Extract ONLY the first name
+   - If not mentioned, return "Joshua" as the default
    Examples:
    - "security staff" or "security teams"
    - "HR managers" or "human resource directors"
@@ -53,6 +57,12 @@ CRITICAL: The target_audience field is for WHO they want to reach, NOT what they
 - User says "sell CRM to security staff" → target_audience: "security staff" (NOT "sales teams")
 - User says "pitch HR software to HR managers" → target_audience: "HR managers"
 - User says "reach CTOs about our product" → target_audience: "CTOs"
+
+CRITICAL: The sender_name field is the name of the person SENDING the outreach, NOT the recipient.
+- User says "hi this is Sarah, I want to sell..." → sender_name: "Sarah"
+- User says "my name is Mike and I own..." → sender_name: "Mike"
+- User says "I'm John from Acme Corp..." → sender_name: "John"
+- If no name mentioned → sender_name: "Joshua" (default)
 
 EXTRACTION RULES:
 - If a field is not explicitly mentioned, infer intelligently from context
@@ -71,7 +81,8 @@ REQUIRED OUTPUT FORMAT (JSON ONLY):
     "location": "extracted or inferred location",
     "business_behavior": "extracted or inferred business behavior",
     "user_intent": "extracted or inferred user intent",
-    "target_audience": "WHO they want to reach, or 'any' if not specified"
+    "target_audience": "WHO they want to reach, or 'any' if not specified",
+    "sender_name": "first name of sender, or 'Joshua' if not mentioned"
 }}
 
 Return ONLY the JSON object, nothing else."""
@@ -104,6 +115,7 @@ Return ONLY the JSON object, nothing else."""
             "business_behavior": extracted_data.get("business_behavior", "business development"),
             "user_intent": extracted_data.get("user_intent", "generate leads"),
             "target_audience": extracted_data.get("target_audience", "any"),  # NEW FIELD
+            "sender_name": extracted_data.get("sender_name", "Joshua"),  # NEW FIELD
         }
         
     except json.JSONDecodeError as e:
@@ -117,6 +129,7 @@ Return ONLY the JSON object, nothing else."""
             "business_behavior": "business development",
             "user_intent": "generate leads",
             "target_audience": "any",
+            "sender_name": "Joshua",
         }
     except Exception as e:
         logger.error(f"Error in input parser: {e}")

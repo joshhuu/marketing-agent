@@ -17,6 +17,110 @@ from prompts.content_prompt import get_content_prompt
 logger = logging.getLogger(__name__)
 
 
+def generate_realistic_product(business_behavior: str, target_archetype: str, category: str) -> Dict[str, Any]:
+    """
+    Use LLM to generate a realistic product based on user's business description
+    
+    Args:
+        business_behavior: What the user is selling/promoting
+        target_archetype: Who they're targeting
+        category: Campaign category
+        
+    Returns:
+        Product info dictionary with name, value_proposition, key_benefits, etc.
+    """
+    logger.info(f"Generating realistic product for: {business_behavior[:50]}...")
+    
+    prompt = f"""You are a product marketing expert. Based on the user's business description, create a realistic product profile that matches what they're trying to sell.
+
+USER'S BUSINESS DESCRIPTION:
+"{business_behavior}"
+
+TARGET AUDIENCE:
+{target_archetype or "B2B decision makers"}
+
+CAMPAIGN TYPE:
+{category}
+
+Your task is to create a REALISTIC product that sounds professional and specific to the business description. This should feel like a real SaaS product or service, not generic text.
+
+GUIDELINES:
+1. Product name should be:
+   - Professional and memorable (2-4 words max)
+   - Related to the business description
+   - Sound like a real tech/SaaS product (e.g., "DataFlow Analytics", "SecureGuard Pro", "TalentBridge HR")
+   
+2. Value proposition should be:
+   - Clear and quantifiable benefit statement
+   - 1 sentence max
+   - Include metrics or outcomes when possible (e.g., "Reduce compliance costs by 40%")
+   
+3. Key benefits should be:
+   - 3-4 specific, tangible benefits
+   - Short phrases (not full sentences)
+   - Relevant to the business description
+   
+4. CTAs should be:
+   - Action-oriented and specific to the product
+   - Professional B2B language
+
+EXAMPLES OF GOOD OUTPUTS:
+- For "selling cybersecurity compliance platform": 
+  {{
+    "name": "ComplianceShield Pro",
+    "value_proposition": "Automate security compliance and reduce audit costs by 60%",
+    "key_benefits": ["Automated SOC 2 & ISO compliance", "Real-time risk monitoring", "One-click audit reports", "24/7 threat detection"]
+  }}
+
+- For "promoting HR analytics software":
+  {{
+    "name": "PeopleMetrics Suite",
+    "value_proposition": "Make data-driven HR decisions with predictive workforce analytics",
+    "key_benefits": ["Turnover prediction models", "Hiring performance insights", "Compensation benchmarking", "Skills gap analysis"]
+  }}
+
+Return ONLY valid JSON with NO explanation.
+
+REQUIRED OUTPUT FORMAT (JSON ONLY):
+{{
+    "name": "professional product name",
+    "value_proposition": "clear benefit statement in one sentence",
+    "key_benefits": ["benefit 1", "benefit 2", "benefit 3", "benefit 4"],
+    "cta_primary": "primary call-to-action",
+    "cta_secondary": "secondary call-to-action"
+}}
+
+Return ONLY the JSON object, nothing else."""
+    
+    try:
+        llm = get_llm(temperature=0.6)  # Balanced creativity
+        response = llm.invoke(prompt)
+        response_text = response.content.strip()
+        
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+            response_text = response_text.strip()
+        
+        product_info = json.loads(response_text)
+        logger.info(f"Generated realistic product: '{product_info.get('name')}'")
+        
+        return product_info
+        
+    except Exception as e:
+        logger.error(f"Failed to generate realistic product: {e}")
+        # Ultra-minimal fallback if LLM fails
+        return {
+            "name": "Your Solution",
+            "value_proposition": "Streamline operations and drive results",
+            "key_benefits": ["Save time", "Reduce costs", "Improve efficiency", "Scale faster"],
+            "cta_primary": "Schedule a Demo",
+            "cta_secondary": "Learn More",
+        }
+
+
 def generate_content(state: AgentState) -> Dict[str, Any]:
     """
     Generate personalized content for LinkedIn, Email, and Call
@@ -34,6 +138,7 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
     category = state.get("category", "")
     business_behavior = state.get("business_behavior", "")
     top_prospects = state.get("top_prospects", [])
+    sender_name = state.get("sender_name", "Joshua")  # NEW: Get sender name
     
     logger.info(f"Generating content: tone={tone}, cta={cta_type}")
     
@@ -143,33 +248,14 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
                 product_info = products[0]
                 logger.info(f"No strong match, using first product '{product_info.get('name')}'")
         else:
-            logger.warning("No products found, creating context-aware default")
+            logger.warning("No products found in database, generating realistic product based on user input")
             
-            # Create a more contextual default based on business_behavior
-            if "security" in behavior_lower or "cyber" in behavior_lower:
-                product_info = {
-                    "name": "Your Cybersecurity Solution",
-                    "value_proposition": "Reduce security risks and automate compliance reporting",
-                    "key_benefits": ["Real-time threat detection", "Automated compliance", "24/7 monitoring"],
-                    "cta_primary": "Request Security Assessment",
-                    "cta_secondary": "Download Security Report",
-                }
-            elif "hr" in behavior_lower or "payroll" in behavior_lower:
-                product_info = {
-                    "name": "Your HR Platform",
-                    "value_proposition": "Streamline payroll and reduce HR admin time",
-                    "key_benefits": ["Automated payroll", "Self-service onboarding", "Compliance tracking"],
-                    "cta_primary": "Schedule Demo",
-                    "cta_secondary": "See Features",
-                }
-            else:
-                product_info = {
-                    "name": "Your Solution",
-                    "value_proposition": "Streamline operations and boost productivity",
-                    "key_benefits": ["Save time", "Reduce costs", "Improve efficiency"],
-                    "cta_primary": "Schedule a Demo",
-                    "cta_secondary": "Learn More",
-                }
+            # Use LLM to generate a realistic product matching the user's business description
+            product_info = generate_realistic_product(
+                business_behavior=business_behavior,
+                target_archetype=target_archetype,
+                category=category
+            )
         
         # Get sample prospect for personalization
         prospect_sample = {}
@@ -190,7 +276,8 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
             urgency_level=urgency_level,
             target_archetype=target_archetype,
             product_info=product_info,
-            prospect_sample=prospect_sample  # Pass this for context
+            prospect_sample=prospect_sample,  # Pass this for context
+            sender_name=sender_name  # NEW: Pass sender name
         )
         
         # Get LLM with higher temperature for creative content

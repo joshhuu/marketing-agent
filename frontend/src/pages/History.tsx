@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { History, ExternalLink, Search, Filter, Trash2, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ApiClient, ExecutionHistory } from '../lib/api';
+import { CampaignDetailModal } from '../components/CampaignDetailModal';
 
 interface CampaignHistoryItem {
   id: string;
@@ -33,6 +34,10 @@ export default function HistoryPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -64,10 +69,37 @@ export default function HistoryPage() {
     fetchHistory();
   }, []);
 
-  const handleDelete = (id: string) => {
-    // Note: Backend doesn't support delete yet, just filter from UI
-    const updated = campaigns.filter(c => c.id !== id);
-    setCampaigns(updated);
+  const handleDeleteClick = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmId) return;
+
+    setDeleting(true);
+    try {
+      await ApiClient.deleteExecution(deleteConfirmId);
+      
+      // Remove from UI
+      const updated = campaigns.filter(c => c.id !== deleteConfirmId);
+      setCampaigns(updated);
+      
+      // Show success message
+      setSuccessMessage('Successfully deleted');
+      setTimeout(() => setSuccessMessage(null), 3000);
+      
+      setDeleteConfirmId(null);
+    } catch (err) {
+      console.error('Failed to delete execution:', err);
+      setError('Failed to delete campaign. Please try again.');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirmId(null);
   };
 
   const filtered = campaigns.filter(c =>
@@ -78,6 +110,23 @@ export default function HistoryPage() {
 
   return (
     <div className="min-h-screen gradient-bg">
+      {/* Success Toast */}
+      {successMessage && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3"
+          >
+            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+              <span className="text-white font-bold">✓</span>
+            </div>
+            <p className="font-medium">{successMessage}</p>
+          </motion.div>
+        </div>
+      )}
+
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
@@ -128,6 +177,14 @@ export default function HistoryPage() {
           </div>
         )}
 
+        {/* Loading state */}
+        {loading && (
+          <div className="text-center py-16">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="text-muted-foreground mt-4">Loading campaign history...</p>
+          </div>
+        )}
+
         {/* Error state */}
         {error && (
           <div className="card-glass rounded-xl p-6 border border-destructive/20 bg-destructive/5">
@@ -157,7 +214,8 @@ export default function HistoryPage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.2 + i * 0.06 }}
-                  className="card-glass rounded-xl p-4 group hover:shadow-md transition-shadow"
+                  className="card-glass rounded-xl p-4 group hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => setSelectedExecutionId(campaign.id)}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -176,7 +234,10 @@ export default function HistoryPage() {
                     </div>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => handleDelete(campaign.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteClick(campaign.id);
+                        }}
                         className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -197,6 +258,51 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      {/* Campaign Detail Modal */}
+      <CampaignDetailModal
+        executionId={selectedExecutionId}
+        onClose={() => setSelectedExecutionId(null)}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6"
+          >
+            <h3 className="text-xl font-bold text-gray-900 mb-2">Delete this record?</h3>
+            <p className="text-gray-600 mb-6">
+              This will permanently delete the campaign execution and all associated data. This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleDeleteCancel}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={deleting}
+                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {deleting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  'Confirm'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 }

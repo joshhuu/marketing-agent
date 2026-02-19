@@ -10,7 +10,8 @@ def get_content_prompt(
     urgency_level: str,
     target_archetype: str,
     product_info: dict,
-    prospect_sample: dict
+    prospect_sample: dict,
+    sender_name: str = "Joshua"
 ) -> str:
     """
     Generate prompt for creating personalized outreach content
@@ -22,6 +23,7 @@ def get_content_prompt(
         target_archetype: Target archetype from ICP matcher
         product_info: Product information from database
         prospect_sample: Sample prospect for personalization
+        sender_name: Name of the person sending the outreach (defaults to "Joshua")
         
     Returns:
         Formatted prompt string
@@ -40,6 +42,10 @@ STRATEGY PARAMETERS:
 - Call-to-Action: {cta_type}
 - Urgency Level: {urgency_level}
 - Target Archetype: {target_archetype}
+
+SENDER INFORMATION:
+- Your Name: {sender_name}
+- Representing: {product_info.get('name', 'Our Solution')}
 
 PRODUCT INFORMATION:
 - Name: {product_info.get('name', 'Our Solution')}
@@ -99,7 +105,7 @@ CONTENT REQUIREMENTS:
    - Tone: {tone}, professional for {seniority} level
 
 3. CALL SCRIPT:
-   - Opener: 2-3 sentences, name + company + why you're calling (be direct, relevant to {department})
+   - Opener: 2-3 sentences, introduce yourself and explain why you're calling (be direct, relevant to {department})
    - Objections: 3 realistic objections for {seniority} {department} professionals with thoughtful responses
      * If they say "we're already using [competitor]"
      * If they say "not a priority right now"

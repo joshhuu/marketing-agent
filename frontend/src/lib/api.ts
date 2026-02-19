@@ -24,6 +24,58 @@ export interface ExecutionHistory {
   created_at: string;
 }
 
+export interface ExecutionDetail {
+  classification: {
+    id: string;
+    time_context: string | null;
+    location: string | null;
+    business_behavior: string | null;
+    user_intent: string | null;
+    category: string;
+    confidence: number;
+    tone: string | null;
+    cta_type: string | null;
+    urgency_level: string | null;
+    created_at: string;
+  };
+  details: {
+    sender_name: string | null;
+    target_audience: string | null;
+    target_archetype: string | null;
+    prospects: Array<{
+      id: string;
+      name: string;
+      job_title: string;
+      company: string;
+      industry: string;
+      priority_score: number;
+    }>;
+    prospects_count: number;
+    prospects_filtered_count: number;
+    selected_channel: string | null;
+    channel_reasoning: string | null;
+    content: {
+      linkedin_message: string | null;
+      email: {
+        subject: string | null;
+        body: string | null;
+      };
+      call_script: {
+        opener: string | null;
+        objections: Array<{
+          objection: string;
+          response: string;
+        }>;
+        close: string | null;
+      };
+    };
+    product: {
+      name: string | null;
+      value_proposition: string | null;
+    };
+  } | null;
+}
+
 export interface ProspectHistory {
   id: string;
   name: string;
@@ -163,6 +215,51 @@ export class ApiClient {
 
     if (!response.ok) {
       throw new Error('Failed to fetch execution history');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get detailed execution information for a specific campaign
+   */
+  static async getExecutionDetails(
+    executionId: string
+  ): Promise<ExecutionDetail> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}/details`,
+      {
+        headers: {
+          'X-User-Role': USER_ROLE,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch execution details');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Delete a campaign execution
+   */
+  static async deleteExecution(
+    executionId: string
+  ): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-User-Role': USER_ROLE,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to delete execution');
     }
 
     return response.json();

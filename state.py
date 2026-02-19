@@ -18,6 +18,7 @@ class AgentState(TypedDict):
     location: Optional[str]
     business_behavior: Optional[str]
     user_intent: Optional[str]
+    sender_name: Optional[str]  # Name of the person sending the campaign (defaults to "Joshua")
     
     # Agent 1 (Classifier) outputs
     category: Optional[str]
