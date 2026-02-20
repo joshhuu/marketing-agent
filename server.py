@@ -7,6 +7,9 @@ import asyncio
 import json
 import csv
 import io
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 from uuid import uuid4
@@ -24,7 +27,7 @@ import time
 from graph import build_graph
 from state import AgentState
 from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog
-from config import LOG_LEVEL
+from config import LOG_LEVEL, MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME, MAILEROO_USE_TLS
 
 # Configure logging
 logging.basicConfig(
@@ -1700,6 +1703,135 @@ async def get_audit_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve audit logs: {str(e)}"
+        )
+
+
+@app.post("/history/executions/{execution_id}/personalized-content/{prospect_id}/send-email")
+async def send_email_via_maileroo(
+    execution_id: str,
+    prospect_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Send personalized email via Maileroo SMTP
+    
+    **Role Required:** Admin or User (Viewers cannot send emails)
+    
+    Sends the personalized email content to a hardcoded test email (joshmessi68@gmail.com)
+    using Maileroo's SMTP server.
+    
+    **Headers:**
+    - X-User-Role: "user" or "admin"
+    """
+    logger.info(f"Sending email for execution {execution_id}, prospect {prospect_id}")
+    
+    try:
+        # Fetch the execution details
+        execution_detail = db.query(ExecutionDetail)\
+            .filter(ExecutionDetail.classification_id == execution_id)\
+            .first()
+        
+        if not execution_detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution details not found for {execution_id}"
+            )
+        
+        # Get personalized content array
+        personalized_content = execution_detail.personalized_content or []
+        
+        # Find the specific prospect's content
+        email_content = None
+        prospect_name = None
+        for content in personalized_content:
+            if content.get("prospect_id") == prospect_id:
+                email_content = content.get("email_message")
+                prospect_name = content.get("prospect_name", "Prospect")
+                break
+        
+        if not email_content:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Email content not found for prospect {prospect_id}"
+            )
+        
+        email_subject = email_content.get("subject", "No Subject")
+        email_body = email_content.get("body", "")
+        
+        # Check if Maileroo SMTP is configured
+        if not MAILEROO_SMTP_USERNAME or not MAILEROO_SMTP_PASSWORD:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Maileroo SMTP not configured. Please set MAILEROO_SMTP_USERNAME and MAILEROO_SMTP_PASSWORD in environment variables."
+            )
+        
+        # Hardcoded recipient email
+        recipient_email = "joshmessi68@gmail.com"
+        
+        # Create email message
+        message = MIMEMultipart("alternative")
+        message["Subject"] = email_subject
+        message["From"] = f"{MAILEROO_FROM_NAME} <{MAILEROO_FROM_EMAIL}>"
+        message["To"] = recipient_email
+        
+        # Create plain text and HTML versions
+        text_part = MIMEText(email_body, "plain")
+        html_part = MIMEText(email_body.replace("\n", "<br>"), "html")
+        
+        message.attach(text_part)
+        message.attach(html_part)
+        
+        # Send email via SMTP
+        try:
+            if MAILEROO_SMTP_PORT == 465:
+                # Use SSL
+                with smtplib.SMTP_SSL(MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, timeout=10) as server:
+                    server.login(MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD)
+                    server.send_message(message)
+            else:
+                # Use STARTTLS for ports 587 and 2525
+                with smtplib.SMTP(MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, timeout=10) as server:
+                    server.ehlo()
+                    if MAILEROO_USE_TLS:
+                        server.starttls()
+                        server.ehlo()
+                    server.login(MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD)
+                    server.send_message(message)
+            
+            logger.info(f"Email sent successfully to {recipient_email} via SMTP")
+            
+            return {
+                "success": True,
+                "message": f"Email sent successfully to {recipient_email}",
+                "execution_id": execution_id,
+                "prospect_id": prospect_id,
+                "prospect_name": prospect_name,
+                "recipient": recipient_email,
+                "subject": email_subject,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP authentication failed: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"SMTP authentication failed. Please check your Maileroo credentials."
+            )
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to send email via SMTP: {str(e)}"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to send email: {str(e)}"
         )
 
 

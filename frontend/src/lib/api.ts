@@ -485,4 +485,30 @@ export class ApiClient {
 
     return response.json();
   }
+
+  /**
+   * Send personalized email via Maileroo
+   */
+  static async sendEmail(
+    executionId: string,
+    prospectId: string
+  ): Promise<{ success: boolean; message: string; recipient: string }> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}/personalized-content/${prospectId}/send-email`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': getUserRole(),
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to send email');
+    }
+
+    return response.json();
+  }
 }

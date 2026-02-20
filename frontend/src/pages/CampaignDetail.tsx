@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar, Target, MessageSquare, Mail, Phone, Package, AlertCircle, Edit2, Sparkles, Save, X } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar, Target, MessageSquare, Mail, Phone, Package, AlertCircle, Edit2, Sparkles, Save, X, Send } from 'lucide-react';
 import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
 import { FormattedText } from '../lib/formatters';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../hooks/use-toast';
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { userRole } = useAuth();
+  const { toast } = useToast();
   const [executionDetail, setExecutionDetail] = useState<ExecutionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +34,11 @@ export default function CampaignDetail() {
   const [showRegenerateModal, setShowRegenerateModal] = useState(false);
   const [regeneratePrompt, setRegeneratePrompt] = useState('');
   const [isRegenerating, setIsRegenerating] = useState(false);
+  
+  // Email sending state
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [showSendEmailModal, setShowSendEmailModal] = useState(false);
+  const [emailToSend, setEmailToSend] = useState<{ subject: string; prospectId: string } | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -120,8 +127,17 @@ export default function CampaignDetail() {
 
       setIsEditing(null);
       setEditedContent({});
+      
+      toast({
+        title: "Content Updated",
+        description: "Your changes have been saved successfully.",
+      });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to save content');
+      toast({
+        title: "Save Failed",
+        description: err instanceof Error ? err.message : 'Failed to save content',
+        variant: "destructive",
+      });
     } finally {
       setIsSaving(false);
     }
@@ -157,10 +173,61 @@ export default function CampaignDetail() {
 
       setShowRegenerateModal(false);
       setRegeneratePrompt('');
+      
+      toast({
+        title: "Content Regenerated",
+        description: "AI has successfully updated your content based on the custom prompt.",
+      });
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to regenerate content');
+      toast({
+        title: "Regeneration Failed",
+        description: err instanceof Error ? err.message : 'Failed to regenerate content',
+        variant: "destructive",
+      });
     } finally {
       setIsRegenerating(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!executionDetail || !id) return;
+    
+    const currentContent = executionDetail.details.personalized_content[selectedProspectIndex];
+    if (!currentContent) return;
+
+    // Show confirmation modal
+    setEmailToSend({
+      subject: currentContent.email_message?.subject || 'No Subject',
+      prospectId: currentContent.prospect_id
+    });
+    setShowSendEmailModal(true);
+  };
+
+  const confirmSendEmail = async () => {
+    if (!executionDetail || !id || !emailToSend) return;
+
+    setShowSendEmailModal(false);
+    setIsSendingEmail(true);
+    try {
+      const response = await ApiClient.sendEmail(
+        id,
+        emailToSend.prospectId
+      );
+
+      toast({
+        title: "Email Sent Successfully! ✉️",
+        description: "Your email has been sent successfully.",
+      });
+      
+      setEmailToSend(null);
+    } catch (err) {
+      toast({
+        title: "Email Send Failed",
+        description: err instanceof Error ? err.message : 'Failed to send email',
+        variant: "destructive",
+      });
+    } finally {
+      setIsSendingEmail(false);
     }
   };
 
@@ -405,13 +472,32 @@ export default function CampaignDetail() {
                             {userRole !== 'viewer' && (
                               <div className="flex gap-2 justify-end">
                                 {!isEditing && (
-                                  <button
-                                    onClick={() => setShowRegenerateModal(true)}
-                                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg"
-                                  >
-                                    <Sparkles className="w-4 h-4" />
-                                    <span className="text-sm font-medium">Regenerate with AI</span>
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={handleSendEmail}
+                                      disabled={isSendingEmail || !executionDetail.details.personalized_content[selectedProspectIndex].email_message}
+                                      className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      {isSendingEmail ? (
+                                        <>
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                          <span className="text-sm font-medium">Sending...</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Send className="w-4 h-4" />
+                                          <span className="text-sm font-medium">Send Email</span>
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      onClick={() => setShowRegenerateModal(true)}
+                                      className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg"
+                                    >
+                                      <Sparkles className="w-4 h-4" />
+                                      <span className="text-sm font-medium">Regenerate with AI</span>
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             )}
@@ -779,6 +865,65 @@ export default function CampaignDetail() {
                       Regenerate
                     </>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Send Email Confirmation Modal */}
+        {showSendEmailModal && emailToSend && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center">
+                    <Send className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Send Email</h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowSendEmailModal(false);
+                    setEmailToSend(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="space-y-3 mb-6">
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Subject</p>
+                  <p className="text-gray-900 font-medium">{emailToSend.subject}</p>
+                </div>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to send this email? This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowSendEmailModal(false);
+                    setEmailToSend(null);
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmSendEmail}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all font-medium inline-flex items-center justify-center gap-2"
+                >
+                  <Send className="w-4 h-4" />
+                  Send Email
                 </button>
               </div>
             </motion.div>

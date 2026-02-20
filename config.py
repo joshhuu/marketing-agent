@@ -15,6 +15,15 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localho
 # Google API Configuration
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
+# Maileroo SMTP Configuration
+MAILEROO_SMTP_HOST = os.getenv("MAILEROO_SMTP_HOST", "smtp.maileroo.com")
+MAILEROO_SMTP_PORT = int(os.getenv("MAILEROO_SMTP_PORT", "587"))
+MAILEROO_SMTP_USERNAME = os.getenv("MAILEROO_SMTP_USERNAME")  # Full email address
+MAILEROO_SMTP_PASSWORD = os.getenv("MAILEROO_SMTP_PASSWORD")  # SMTP password from Maileroo
+MAILEROO_FROM_EMAIL = os.getenv("MAILEROO_FROM_EMAIL", "noreply@yourdomain.com")
+MAILEROO_FROM_NAME = os.getenv("MAILEROO_FROM_NAME", "Marketing Agent")
+MAILEROO_USE_TLS = os.getenv("MAILEROO_USE_TLS", "True").lower() == "true"
+
 # Model Configuration
 MODEL_NAME = "gemma-3-27b-it"
 
