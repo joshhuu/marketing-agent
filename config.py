@@ -24,6 +24,16 @@ MAILEROO_FROM_EMAIL = os.getenv("MAILEROO_FROM_EMAIL", "noreply@yourdomain.com")
 MAILEROO_FROM_NAME = os.getenv("MAILEROO_FROM_NAME", "Marketing Agent")
 MAILEROO_USE_TLS = os.getenv("MAILEROO_USE_TLS", "True").lower() == "true"
 
+# Hardcoded test email recipients
+# All emails will be sent ONLY to these addresses for testing
+HARDCODED_TEST_EMAILS = [
+    "joshmessi68@gmail.com",
+    "joshh080905@gmail.com",
+    "joshuasuresh08@gmail.com",
+    "joshulive@gmail.com",
+    "teamcollabcore@gmail.com"
+]
+
 # Model Configuration
 MODEL_NAME = "gemma-3-27b-it"
 
@@ -35,6 +45,7 @@ TEMPERATURE_CONFIG: Dict[str, float] = {
     "icp_matcher": 0.3,       # Low - analytical matching
     "platform_decision": 0.4, # Medium-low - data-driven reasoning
     "content_generator": 0.7, # High - creative content generation
+    "email_validator": 0.2,   # Very low - deterministic validation
 }
 
 # Logging Configuration

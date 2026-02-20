@@ -1,7 +1,7 @@
 """
 LangGraph setup for Multi-Agent Marketing System
 Defines the workflow graph connecting all agents
-UPDATED: Now includes engagement analysis and conditional routing
+UPDATED: Now includes engagement analysis, email validation, and email sending
 """
 import logging
 from langgraph.graph import StateGraph, END
@@ -14,6 +14,8 @@ from nodes.icp_matcher import match_icp
 from nodes.engagement_analyzer import analyze_engagement
 from nodes.platform_decision import decide_platform
 from nodes.content_generator import generate_content
+from nodes.email_validator import validate_email
+from nodes.email_sender import send_emails
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -48,26 +50,71 @@ def should_proceed_after_engagement(state: AgentState) -> str:
     return "platform_decision"
 
 
+def should_validate_emails(state: AgentState) -> str:
+    """
+    Conditional routing after content generation
+    
+    Only validate emails if the selected channel is email.
+    
+    Returns:
+        "email_validator" if channel is email
+        "END" for other channels
+    """
+    selected_channel = state.get("selected_channel", "email")
+    
+    if selected_channel == "email":
+        logger.info("Channel is email - proceeding to email validation")
+        return "email_validator"
+    else:
+        logger.info(f"Channel is {selected_channel} - skipping email validation")
+        return "END"
+
+
+def should_send_emails(state: AgentState) -> str:
+    """
+    Conditional routing after email validation
+    
+    Only send emails if they passed validation.
+    
+    Returns:
+        "email_sender" if emails are approved
+        "END" if emails failed validation
+    """
+    emails_approved = state.get("emails_approved", False)
+    
+    if emails_approved:
+        logger.info("Emails approved - proceeding to email sender")
+        return "email_sender"
+    else:
+        logger.warning("Emails not approved - cannot send")
+        return "END"
+
+
 def build_graph():
     """
     Constructs the LangGraph StateGraph for the multi-agent system
     
     Flow:
         START 
-        → input_parser 
-        → classifier 
-        → strategy 
-        → icp_matcher 
-        → engagement_analyzer (NEW)
-        → (conditional check)
-        → platform_decision 
-        → content_generator 
-        → END
+        -> input_parser 
+        -> classifier 
+        -> strategy 
+        -> icp_matcher 
+        -> engagement_analyzer
+        -> (conditional check)
+        -> platform_decision 
+        -> content_generator 
+        -> (conditional check - is email?)
+        -> email_validator (if email)
+        -> (conditional check - passed validation?)
+        -> email_sender (if approved)
+        -> END
     
     IMPROVEMENTS:
     - Added engagement_analyzer to prevent over-contacting prospects
-    - Added conditional routing to handle edge cases intelligently
-    - Maintains all existing fallback logic in individual nodes
+    - Added email_validator to check for spam and professionalism
+    - Added email_sender to send approved emails to hardcoded test addresses
+    - Added conditional routing to handle different channels and validation results
     
     Returns:
         Compiled graph ready to invoke with initial state
@@ -82,15 +129,17 @@ def build_graph():
     graph.add_node("classifier", classify_task)
     graph.add_node("strategy", generate_strategy)
     graph.add_node("icp_matcher", match_icp)
-    graph.add_node("engagement_analyzer", analyze_engagement)  # NEW
+    graph.add_node("engagement_analyzer", analyze_engagement)
     graph.add_node("platform_decision", decide_platform)
     graph.add_node("content_generator", generate_content)
+    graph.add_node("email_validator", validate_email)
+    graph.add_node("email_sender", send_emails)
     
     # Add edges (define sequential flow with conditional routing)
     graph.add_edge("input_parser", "classifier")
     graph.add_edge("classifier", "strategy")
     graph.add_edge("strategy", "icp_matcher")
-    graph.add_edge("icp_matcher", "engagement_analyzer")  # NEW
+    graph.add_edge("icp_matcher", "engagement_analyzer")
     
     # Conditional routing after engagement analysis
     # This ensures we handle cases where all prospects are filtered
@@ -105,12 +154,37 @@ def build_graph():
     
     # Continue with existing flow
     graph.add_edge("platform_decision", "content_generator")
-    graph.add_edge("content_generator", END)
+    
+    # Conditional routing after content generation
+    # Only validate emails if channel is email
+    graph.add_conditional_edges(
+        "content_generator",
+        should_validate_emails,
+        {
+            "email_validator": "email_validator",
+            "END": END
+        }
+    )
+    
+    # Conditional routing after email validation
+    # Only send emails if they passed validation
+    graph.add_conditional_edges(
+        "email_validator",
+        should_send_emails,
+        {
+            "email_sender": "email_sender",
+            "END": END
+        }
+    )
+    
+    # Email sender goes to END
+    graph.add_edge("email_sender", END)
     
     # Set entry point
     graph.set_entry_point("input_parser")
     
-    logger.info("Graph construction complete with engagement analysis and conditional routing")
+    logger.info("Graph construction complete with email validation and sending")
     
     # Compile and return
     return graph.compile()
+

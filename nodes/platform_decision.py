@@ -27,6 +27,17 @@ def decide_platform(state: AgentState) -> Dict[str, Any]:
     Returns:
         Updated state with: selected_channel, channel_reasoning
     """
+    # Check if user explicitly requested email in prompt
+    user_prompt = state.get('user_prompt', '').lower()
+    force_email = any(keyword in user_prompt for keyword in ['send email', 'email to', 'via email', 'through email', 'email them'])
+    
+    if force_email:
+        logger.info("User explicitly requested email channel - forcing email")
+        return {
+            "selected_channel": "email",
+            "channel_reasoning": "Email channel explicitly requested by user in prompt"
+        }
+    
     target_archetype = state.get("target_archetype", "")
     urgency_level = state.get("urgency_level", "medium")
     time_context = state.get("time", "current")

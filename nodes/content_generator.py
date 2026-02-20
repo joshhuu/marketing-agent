@@ -312,6 +312,7 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
                 personalized_content.append({
                     "prospect_id": prospect_id,
                     "prospect_name": prospect_name,
+                    "prospect_email": prospect.get("email", ""),
                     "prospect_company": prospect.get("company_name", ""),
                     "prospect_job_title": prospect.get("job_title", ""),
                     "linkedin_message": content_data.get("linkedin_message", ""),
@@ -329,6 +330,7 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
                 personalized_content.append({
                     "prospect_id": prospect_id,
                     "prospect_name": prospect_name,
+                    "prospect_email": prospect.get("email", ""),
                     "prospect_company": prospect.get("company_name", ""),
                     "prospect_job_title": prospect.get("job_title", ""),
                     "linkedin_message": f"Hi {prospect_name.split()[0]}, I noticed you're in {target_archetype}. Would love to connect and share how we can help. Interested in a quick chat?",
@@ -354,6 +356,7 @@ def generate_content(state: AgentState) -> Dict[str, Any]:
                 personalized_content.append({
                     "prospect_id": prospect_id,
                     "prospect_name": prospect_name,
+                    "prospect_email": prospect.get("email", ""),
                     "prospect_company": prospect.get("company_name", ""),
                     "prospect_job_title": prospect.get("job_title", ""),
                     "linkedin_message": f"Hi {prospect_name.split()[0]}, Let's connect!",

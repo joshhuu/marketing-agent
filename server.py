@@ -464,6 +464,8 @@ async def stream_agent_execution(
         from nodes.icp_matcher import match_icp
         from nodes.platform_decision import decide_platform
         from nodes.content_generator import generate_content
+        from nodes.email_validator import validate_email
+        from nodes.email_sender import send_emails
         
         # Agent 1: Input Parser
         state = parse_input(initial_state)
@@ -546,7 +548,7 @@ async def stream_agent_execution(
         
         yield f"data: {json.dumps({'stage': 'content_generator', 'status': 'completed', 'data': final_content, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
-        # Save execution details to database
+        # Save execution details to database BEFORE email validation
         classification_id = None
         try:
             from utils.db_queries import save_execution_details
@@ -554,14 +556,55 @@ async def stream_agent_execution(
             execution_detail = save_execution_details(db, state)
             if execution_detail:
                 classification_id = str(execution_detail.classification_id)
+                state['classification_id'] = classification_id  # Add to state for email_sender
             db.close()
             logger.info(f"Execution details saved to database with classification_id={classification_id}")
         except Exception as db_error:
             logger.error(f"Failed to save execution details: {db_error}")
             # Continue even if save fails
         
+        # Agent 7: Email Validator (only if channel is email)
+        selected_channel = state.get('selected_channel', 'email')
+        if selected_channel == 'email':
+            yield f"data: {json.dumps({'stage': 'email_validator', 'status': 'started', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            state = validate_email(state)
+            
+            validation_results = state.get('email_validation_results', [])
+            emails_approved = state.get('emails_approved', False)
+            
+            validation_summary = {
+                'total_emails': len(validation_results),
+                'passed': sum(1 for r in validation_results if r.get('passed', False)),
+                'failed': sum(1 for r in validation_results if not r.get('passed', False)),
+                'overall_approved': emails_approved,
+                'results': validation_results
+            }
+            
+            yield f"data: {json.dumps({'stage': 'email_validator', 'status': 'completed', 'data': validation_summary, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            
+            # Agent 8: Email Sender (only if emails approved)
+            if emails_approved:
+                yield f"data: {json.dumps({'stage': 'email_sender', 'status': 'started', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+                state = send_emails(state)
+                
+                send_results = state.get('email_send_results', [])
+                emails_sent_count = state.get('emails_sent_count', 0)
+                send_error = state.get('send_error')
+                
+                send_summary = {
+                    'emails_sent': emails_sent_count,
+                    'results': send_results,
+                    'error': send_error
+                }
+                
+                yield f"data: {json.dumps({'stage': 'email_sender', 'status': 'completed', 'data': send_summary, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            else:
+                yield f"data: {json.dumps({'stage': 'email_sender', 'status': 'skipped', 'reason': 'Emails failed validation', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        else:
+            yield f"data: {json.dumps({'stage': 'email_validator', 'status': 'skipped', 'reason': f'Channel is {selected_channel}, not email', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        
         # Final completion
-        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'classification_id': classification_id, 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', []))}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'classification_id': classification_id, 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', [])), 'emails_sent': state.get('emails_sent_count', 0)}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
         # Cleanup
         await session_manager.cleanup_session(session_id)

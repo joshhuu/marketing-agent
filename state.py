@@ -45,6 +45,16 @@ class AgentState(TypedDict):
     # Personalized content for each prospect
     personalized_content: Optional[List[Dict[str, Any]]]  # List of {prospect_id, prospect_name, linkedin_message, email_message, call_script}
     
+    # Agent 5 (Email Validator) outputs
+    email_validation_results: Optional[List[Dict[str, Any]]]  # Validation results for each email
+    emails_approved: Optional[bool]  # Whether all emails passed validation
+    
+    # Agent 6 (Email Sender) outputs
+    email_send_results: Optional[List[Dict[str, Any]]]  # Send results for each email
+    emails_sent_count: Optional[int]  # Number of emails successfully sent
+    send_error: Optional[str]  # Error message if sending failed
+    classification_id: Optional[str]  # ID for tracking in sent_emails table
+    
     # Legacy fields (for backward compatibility)
     linkedin_message: Optional[str]
     email_message: Optional[Dict[str, str]]  # {subject: str, body: str}
