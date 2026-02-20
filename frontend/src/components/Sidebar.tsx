@@ -37,19 +37,23 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
         <div className="h-16 flex items-center justify-between px-4 border-b border-border/60">
           {!collapsed && (
             <Link to="/" className="flex items-center gap-2.5 group">
-              <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow duration-300">
-                <Sparkles className="w-5 h-5 text-primary-foreground" />
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="Indynd Aurevix Logo" 
+                className="w-8 h-8 rounded-lg object-contain group-hover:scale-105 transition-transform duration-300"
+              />
               <span className="font-bold text-foreground tracking-tight">
-                Campaign<span className="text-gradient">AI</span>
+                Indynd <span className="text-gradient">Aurevix</span>
               </span>
             </Link>
           )}
           {collapsed && (
             <Link to="/" className="flex items-center justify-center w-full group">
-              <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow-sm group-hover:shadow-glow transition-shadow duration-300">
-                <Sparkles className="w-5 h-5 text-primary-foreground" />
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="Indynd Aurevix Logo" 
+                className="w-8 h-8 rounded-lg object-contain group-hover:scale-105 transition-transform duration-300"
+              />
             </Link>
           )}
         </div>
