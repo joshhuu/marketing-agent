@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ApiClient } from '../lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardStats {
   totalCampaigns: number;
@@ -37,6 +38,7 @@ interface CampaignTrend {
 const COLORS = ['#8b5cf6', '#ec4899', '#06b6d4', '#f59e0b', '#10b981'];
 
 export default function Dashboard() {
+  const { userRole } = useAuth();
   const [stats, setStats] = useState<DashboardStats>({
     totalCampaigns: 0,
     totalProspects: 0,
@@ -48,6 +50,8 @@ export default function Dashboard() {
   const [campaignTrends, setCampaignTrends] = useState<CampaignTrend[]>([]);
   const [recentCampaigns, setRecentCampaigns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const canCreateCampaign = userRole === 'admin' || userRole === 'user';
 
   useEffect(() => {
     fetchDashboardData();
@@ -221,13 +225,15 @@ export default function Dashboard() {
               Overview of your marketing campaigns and performance metrics
             </p>
           </div>
-          <Link 
-            to="/campaign"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
-          >
-            <Zap className="w-4 h-4" />
-            New Campaign
-          </Link>
+          {canCreateCampaign && (
+            <Link 
+              to="/campaign"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+            >
+              <Zap className="w-4 h-4" />
+              New Campaign
+            </Link>
+          )}
         </div>
 
         {/* Stats Grid */}
@@ -444,12 +450,14 @@ export default function Dashboard() {
                 <div className="h-[200px] flex flex-col items-center justify-center text-muted-foreground">
                   <Zap className="w-8 h-8 mb-2 opacity-50" />
                   <p className="text-sm">No campaigns yet</p>
-                  <Link 
-                    to="/campaign" 
-                    className="text-xs text-primary hover:underline mt-2"
-                  >
-                    Create your first campaign
-                  </Link>
+                  {canCreateCampaign && (
+                    <Link 
+                      to="/campaign" 
+                      className="text-xs text-primary hover:underline mt-2"
+                    >
+                      Create your first campaign
+                    </Link>
+                  )}
                 </div>
               )}
             </div>
@@ -457,31 +465,33 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-xl p-6"
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground mb-1">
-                Ready to launch your next campaign?
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Let AI agents handle prospect research, content creation, and platform selection
-              </p>
+        {canCreateCampaign && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-xl p-6"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-1">
+                  Ready to launch your next campaign?
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Let AI agents handle prospect research, content creation, and platform selection
+                </p>
+              </div>
+              <Link
+                to="/campaign"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors shadow-lg"
+              >
+                <Zap className="w-4 h-4" />
+                Create Campaign
+                <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
-            <Link
-              to="/campaign"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors shadow-lg"
-            >
-              <Zap className="w-4 h-4" />
-              Create Campaign
-              <ArrowRight className="w-4 h-4" />
-            </Link>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
       </div>
     </div>
   );

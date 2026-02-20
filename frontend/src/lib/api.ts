@@ -1,6 +1,10 @@
 // src/lib/api.ts
 const API_BASE_URL = 'http://localhost:8000';
-const USER_ROLE = 'marketer';
+
+// Helper to get user role from localStorage
+const getUserRole = (): string => {
+  return localStorage.getItem('userRole') || 'user';
+};
 
 export interface SSEEvent {
   stage: string;
@@ -179,7 +183,7 @@ export class ApiClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
         body: JSON.stringify(payload),
       });
@@ -251,7 +255,7 @@ export class ApiClient {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-User-Role': USER_ROLE,
+        'X-User-Role': getUserRole(),
       },
       body: JSON.stringify({
         session_id: sessionId,
@@ -276,7 +280,7 @@ export class ApiClient {
       `${API_BASE_URL}/history/executions?limit=${limit}&offset=${offset}`,
       {
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );
@@ -298,7 +302,7 @@ export class ApiClient {
       `${API_BASE_URL}/history/executions/${executionId}/details`,
       {
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );
@@ -321,7 +325,7 @@ export class ApiClient {
       {
         method: 'DELETE',
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );
@@ -345,7 +349,7 @@ export class ApiClient {
       `${API_BASE_URL}/history/prospects?min_priority_score=${minPriorityScore}&limit=${limit}&offset=${offset}`,
       {
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );
@@ -368,7 +372,7 @@ export class ApiClient {
       `${API_BASE_URL}/prospects/recent?limit=${limit}&page=${page}`,
       {
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );
@@ -390,7 +394,7 @@ export class ApiClient {
       `${API_BASE_URL}/prospects/${prospectId}`,
       {
         headers: {
-          'X-User-Role': USER_ROLE,
+          'X-User-Role': getUserRole(),
         },
       }
     );

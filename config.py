@@ -16,7 +16,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localho
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Model Configuration
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemma-3-27b-it"
 
 # Temperature settings per agent
 TEMPERATURE_CONFIG: Dict[str, float] = {

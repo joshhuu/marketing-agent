@@ -188,6 +188,40 @@ class ExecutionDetail(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class APICallLog(Base):
+    """Model for tracking API calls for monitoring and compliance"""
+    __tablename__ = "api_call_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    endpoint = Column(String(255), nullable=False)
+    method = Column(String(10), nullable=False)
+    user_role = Column(String(50), nullable=False)
+    status_code = Column(Integer)
+    response_time_ms = Column(Float)
+    ip_address = Column(String(50))
+    user_agent = Column(String(500))
+    request_body_hash = Column(String(64))  # SHA256 hash for privacy
+    prompt_preview = Column(Text)  # First 500 chars of prompt for admin visibility
+    error_message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class AuditLog(Base):
+    """Model for security audit trail and compliance logging"""
+    __tablename__ = "audit_logs"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    action = Column(String(100), nullable=False)  # e.g., 'campaign_created', 'prospect_viewed'
+    resource_type = Column(String(50), nullable=False)  # e.g., 'campaign', 'prospect'
+    resource_id = Column(UUID(as_uuid=True))
+    user_role = Column(String(50), nullable=False)
+    ip_address = Column(String(50))
+    details = Column(JSON)  # Additional context
+    prompt_used = Column(Text)  # For AI transparency
+    llm_model = Column(String(100))  # Which model was used
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 def get_db_session() -> Generator[Session, None, None]:
     """
     Create and yield a database session

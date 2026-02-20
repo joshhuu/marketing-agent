@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { History, ExternalLink, Search, Filter, Trash2, AlertCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiClient, ExecutionHistory } from '../lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CampaignHistoryItem {
   id: string;
@@ -30,6 +31,7 @@ function formatDate(dateStr: string): string {
 
 export default function HistoryPage() {
   const navigate = useNavigate();
+  const { userRole } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignHistoryItem[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -37,6 +39,10 @@ export default function HistoryPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Check if user can delete (user or admin)
+  const canDelete = userRole === 'admin' || userRole === 'user';
+  const canCreateCampaign = userRole === 'admin' || userRole === 'user';
 
   useEffect(() => {
     const fetchHistory = async () => {
@@ -204,7 +210,9 @@ export default function HistoryPage() {
               <div className="text-center py-16 text-muted-foreground">
                 <History className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p className="font-medium">No campaigns found</p>
-                <p className="text-sm mt-1">Try a different search or <Link to="/campaign" className="text-primary hover:underline">create a new campaign</Link></p>
+                {canCreateCampaign && (
+                  <p className="text-sm mt-1">Try a different search or <Link to="/campaign" className="text-primary hover:underline">create a new campaign</Link></p>
+                )}
               </div>
             ) : (
               filtered.map((campaign, i) => (
@@ -231,17 +239,19 @@ export default function HistoryPage() {
                         <span className="text-xs bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full">CTA: {campaign.ctaType}</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteClick(campaign.id);
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {canDelete && (
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteClick(campaign.id);
+                          }}
+                          className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               ))
@@ -249,7 +259,7 @@ export default function HistoryPage() {
           </div>
         )}
 
-        {!loading && !error && filtered.length > 0 && (
+        {!loading && !error && filtered.length > 0 && canCreateCampaign && (
           <div className="text-center mt-8">
             <Link to="/campaign" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold">
               + New Campaign

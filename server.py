@@ -10,16 +10,18 @@ from typing import Optional, List, Dict, Any, Literal
 from uuid import uuid4
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
+import hashlib
+import time
 
 from graph import build_graph
 from state import AgentState
-from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail
+from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog
 from config import LOG_LEVEL
 
 # Configure logging
@@ -137,7 +139,9 @@ class ProspectHistoryResponse(BaseModel):
 class Role:
     """Role definitions for RBAC"""
     ADMIN = "admin"
-    MARKETER = "marketer"
+    USER = "user"  # Same as marketer, renamed for clarity
+    MARKETER = "user"  # Alias for backward compatibility
+    VIEWER = "viewer"  # Read-only access
 
 
 class RBACError(HTTPException):
@@ -169,11 +173,15 @@ def get_current_user_role(x_user_role: Optional[str] = Header(None)) -> str:
         return Role.MARKETER
     
     role = x_user_role.lower()
-    if role not in [Role.ADMIN, Role.MARKETER]:
+    if role not in [Role.ADMIN, Role.USER, Role.VIEWER, "marketer"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {role}. Must be 'admin' or 'marketer'"
+            detail=f"Invalid role: {role}. Must be 'admin', 'user', or 'viewer'"
         )
+    
+    # Normalize 'marketer' to 'user' for consistency
+    if role == "marketer":
+        role = Role.USER
     
     logger.info(f"Request authenticated with role: {role}")
     return role
@@ -305,6 +313,106 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=3600,
 )
+
+
+# ========================================
+# API CALL LOGGING MIDDLEWARE
+# ========================================
+
+@app.middleware("http")
+async def log_api_calls(request: Request, call_next):
+    """Middleware to log all API calls for monitoring and compliance"""
+    start_time = time.time()
+    
+    # Get user role from header
+    user_role = request.headers.get("x-user-role", "anonymous")
+    
+    # Capture request body for prompt extraction
+    request_body = None
+    prompt_preview = None
+    if request.method == "POST":
+        try:
+            body = await request.body()
+            request_body = body
+            # Try to extract prompt from request body
+            if body:
+                try:
+                    body_json = json.loads(body.decode('utf-8'))
+                    # Look for common prompt fields
+                    for field in ['business_behavior', 'intent', 'user_intent', 'prompt']:
+                        if field in body_json and body_json[field]:
+                            prompt_preview = str(body_json[field])[:500]
+                            break
+                except:
+                    pass
+        except:
+            pass
+    
+    # Process request
+    response = await call_next(request)
+    
+    # Calculate response time
+    response_time_ms = (time.time() - start_time) * 1000
+    
+    # Log asynchronously (don't block response)
+    try:
+        db = next(get_db_session())
+        
+        # Hash request body for privacy (don't store actual data)
+        request_hash = None
+        if request_body:
+            request_hash = hashlib.sha256(request_body).hexdigest()
+        
+        api_log = APICallLog(
+            endpoint=str(request.url.path),
+            method=request.method,
+            user_role=user_role,
+            status_code=response.status_code,
+            response_time_ms=response_time_ms,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent", "")[:500],
+            request_body_hash=request_hash,
+            prompt_preview=prompt_preview
+        )
+        
+        db.add(api_log)
+        db.commit()
+        db.close()
+    except Exception as e:
+        logger.error(f"Failed to log API call: {e}")
+        # Don't fail the request if logging fails
+    
+    return response
+
+
+async def create_audit_log(
+    db: Session,
+    action: str,
+    resource_type: str,
+    user_role: str,
+    resource_id: Optional[str] = None,
+    details: Optional[Dict] = None,
+    prompt_used: Optional[str] = None,
+    llm_model: Optional[str] = None,
+    ip_address: Optional[str] = None
+):
+    """Helper function to create audit log entries"""
+    try:
+        audit_log = AuditLog(
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            user_role=user_role,
+            ip_address=ip_address,
+            details=details,
+            prompt_used=prompt_used,
+            llm_model=llm_model
+        )
+        db.add(audit_log)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
+        # Don't fail the operation if audit logging fails
 
 
 # ========================================
@@ -478,12 +586,12 @@ async def root():
 @app.post("/campaigns/execute")
 async def execute_campaign(
     campaign_input: CampaignInput,
-    role: str = Depends(require_role([Role.MARKETER, Role.ADMIN]))
+    role: str = Depends(require_role([Role.USER, Role.ADMIN]))
 ):
     """
     Execute marketing campaign with real-time SSE streaming
     
-    **Role Required:** Marketer or Admin
+    **Role Required:** User or Admin
     
     **Process:**
     1. Streams agent execution status in real-time
@@ -492,10 +600,26 @@ async def execute_campaign(
     4. Continues execution upon approval
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user" or "admin"
     """
     session_id = str(uuid4())
     logger.info(f"Starting campaign execution (session: {session_id}, role: {role})")
+    
+    # Create audit log for campaign execution
+    try:
+        db = next(get_db_session())
+        await create_audit_log(
+            db=db,
+            action="campaign_execution_started",
+            resource_type="campaign",
+            user_role=role,
+            details={"session_id": session_id},
+            prompt_used=user_prompt,
+            llm_model="gemini-1.5-flash"  # Update based on your config
+        )
+        db.close()
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
     
     return StreamingResponse(
         stream_agent_execution(campaign_input, session_id, role),
@@ -511,20 +635,37 @@ async def execute_campaign(
 @app.post("/campaigns/approve")
 async def approve_campaign(
     approval: ApprovalRequest,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER]))
+    role: str = Depends(require_role([Role.ADMIN, Role.USER]))
 ):
     """
     Approve or reject campaign execution after ICP matching
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin or User
     
     This endpoint allows human-in-the-loop control. After Agent 2 (ICP Matcher)
     identifies prospects, execution pauses until this endpoint receives approval.
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user" or "admin"
     """
     logger.info(f"Approval request for session {approval.session_id}: {approval.approved} (role: {role})")
+    
+    # Create audit log
+    try:
+        db = next(get_db_session())
+        await create_audit_log(
+            db=db,
+            action="campaign_approved" if approval.approved else "campaign_rejected",
+            resource_type="campaign",
+            user_role=role,
+            details={
+                "session_id": approval.session_id,
+                "selected_prospect_count": len(approval.selected_prospect_ids) if approval.selected_prospect_ids else 0
+            }
+        )
+        db.close()
+    except Exception as e:
+        logger.error(f"Failed to create audit log: {e}")
     
     await session_manager.approve_session(
         approval.session_id,
@@ -544,18 +685,18 @@ async def approve_campaign(
 async def get_execution_history(
     limit: int = 50,
     offset: int = 0,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Retrieve execution history from classifications table
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin, User, or Viewer (read-only)
     
     Returns historical campaign classifications with strategy parameters.
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user", "admin", or "viewer"
     """
     logger.info(f"Fetching execution history (limit: {limit}, offset: {offset}, role: {role})")
     
@@ -593,19 +734,19 @@ async def get_execution_history(
 @app.get("/history/executions/{execution_id}/details")
 async def get_execution_details(
     execution_id: str,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Retrieve detailed execution information for a specific campaign
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin, User, or Viewer (read-only)
     
     Returns full agent workflow results including classification, prospects,
     platform decision, and generated content.
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user", "admin", or "viewer"
     """
     logger.info(f"Fetching execution details for ID: {execution_id}")
     
@@ -700,16 +841,16 @@ async def get_execution_details(
 @app.delete("/history/executions/{execution_id}")
 async def delete_execution(
     execution_id: str,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Delete a campaign execution and its details from the database
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin or User (Viewers cannot delete)
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user" or "admin"
     """
     logger.info(f"Deleting execution ID: {execution_id}")
     
@@ -755,13 +896,13 @@ async def delete_execution(
 async def get_recent_campaign_prospects(
     limit: int = 50,
     page: int = 1,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Get paginated list of all prospects from the database with total count
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin, User, or Viewer (read-only)
     """
     logger.info(f"Fetching prospects (page: {page}, limit: {limit})")
     
@@ -821,13 +962,13 @@ async def get_recent_campaign_prospects(
 @app.get("/prospects/{prospect_id}")
 async def get_prospect_details(
     prospect_id: str,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Get detailed information for a specific prospect
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin, User, or Viewer (read-only)
     """
     logger.info(f"Fetching prospect details for ID: {prospect_id}")
     
@@ -906,18 +1047,18 @@ async def get_prospect_history(
     min_priority_score: float = 0.0,
     limit: int = 100,
     offset: int = 0,
-    role: str = Depends(require_role([Role.ADMIN, Role.MARKETER])),
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
     db: Session = Depends(get_db_session)
 ):
     """
     Retrieve prospects with priority scores
     
-    **Role Required:** Admin or Marketer
+    **Role Required:** Admin, User, or Viewer (read-only)
     
     Returns prospects sorted by priority score, showing engagement history.
     
     **Headers:**
-    - X-User-Role: "marketer" or "admin"
+    - X-User-Role: "user", "admin", or "viewer"
     """
     logger.info(f"Fetching prospect history (min_score: {min_priority_score}, limit: {limit}, role: {role})")
     
@@ -962,7 +1103,7 @@ async def get_system_logs(
     **Role Required:** Admin ONLY
     
     Returns recent system logs for debugging and monitoring.
-    Marketers cannot access this endpoint.
+    Viewers and Users cannot access this endpoint.
     
     **Headers:**
     - X-User-Role: "admin"
@@ -977,6 +1118,143 @@ async def get_system_logs(
         "access_level": "admin_only",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+@app.get("/admin/api-calls")
+async def get_api_call_logs(
+    limit: int = 100,
+    offset: int = 0,
+    role: str = Depends(require_role([Role.ADMIN])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Retrieve API call logs for monitoring and analytics (Admin only)
+    
+    **Role Required:** Admin ONLY
+    
+    Returns API call metrics including endpoint usage, response times, and error rates.
+    
+    **Headers:**
+    - X-User-Role: "admin"
+    """
+    logger.info(f"Admin accessing API call logs (limit: {limit}, offset: {offset})")
+    
+    try:
+        # Get total count
+        total_count = db.query(APICallLog).count()
+        
+        # Get logs
+        logs = db.query(APICallLog)\
+            .order_by(desc(APICallLog.created_at))\
+            .limit(limit)\
+            .offset(offset)\
+            .all()
+        
+        # Get aggregated statistics
+        stats = db.query(
+            func.count(APICallLog.id).label('total_calls'),
+            func.avg(APICallLog.response_time_ms).label('avg_response_time'),
+            func.count(APICallLog.id).filter(APICallLog.status_code >= 400).label('error_count')
+        ).first()
+        
+        return {
+            "logs": [
+                {
+                    "id": str(log.id),
+                    "endpoint": log.endpoint,
+                    "method": log.method,
+                    "user_role": log.user_role,
+                    "status_code": log.status_code,
+                    "response_time_ms": log.response_time_ms,
+                    "ip_address": log.ip_address,
+                    "prompt_preview": log.prompt_preview,
+                    "created_at": log.created_at.isoformat() + 'Z' if log.created_at else None
+                }
+                for log in logs
+            ],
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "statistics": {
+                "total_calls": stats.total_calls or 0,
+                "avg_response_time_ms": round(stats.avg_response_time, 2) if stats.avg_response_time else 0,
+                "error_count": stats.error_count or 0,
+                "success_rate": round((1 - (stats.error_count or 0) / max(stats.total_calls or 1, 1)) * 100, 2)
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error fetching API call logs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve API call logs: {str(e)}"
+        )
+
+
+@app.get("/admin/audit-logs")
+async def get_audit_logs(
+    limit: int = 100,
+    offset: int = 0,
+    action: Optional[str] = None,
+    resource_type: Optional[str] = None,
+    role: str = Depends(require_role([Role.ADMIN])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Retrieve security audit logs for compliance (Admin only)
+    
+    **Role Required:** Admin ONLY
+    
+    Returns audit trail of all actions performed in the system, including AI prompts used.
+    
+    **Headers:**
+    - X-User-Role: "admin"
+    """
+    logger.info(f"Admin accessing audit logs (limit: {limit}, offset: {offset})")
+    
+    try:
+        # Build query with optional filters
+        query = db.query(AuditLog)
+        
+        if action:
+            query = query.filter(AuditLog.action == action)
+        if resource_type:
+            query = query.filter(AuditLog.resource_type == resource_type)
+        
+        # Get total count
+        total_count = query.count()
+        
+        # Get logs
+        logs = query\
+            .order_by(desc(AuditLog.created_at))\
+            .limit(limit)\
+            .offset(offset)\
+            .all()
+        
+        return {
+            "logs": [
+                {
+                    "id": str(log.id),
+                    "action": log.action,
+                    "resource_type": log.resource_type,
+                    "resource_id": str(log.resource_id) if log.resource_id else None,
+                    "user_role": log.user_role,
+                    "ip_address": log.ip_address,
+                    "details": log.details,
+                    "llm_model": log.llm_model,
+                    "created_at": log.created_at.isoformat() if log.created_at else None
+                }
+                for log in logs
+            ],
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        logger.error(f"Error fetching audit logs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve audit logs: {str(e)}"
+        )
 
 
 @app.get("/health")

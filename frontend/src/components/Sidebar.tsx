@@ -1,13 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Sparkles, History, Users, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Sparkles, History, Users, ChevronLeft, ChevronRight, BarChart } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/campaign', label: 'Campaign', icon: Sparkles },
-  { to: '/history', label: 'History', icon: History },
-  { to: '/prospects', label: 'Prospects', icon: Users },
-];
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -16,6 +10,20 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const location = useLocation();
+  const { userRole } = useAuth();
+
+  const navItems = [
+    { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'user', 'viewer'] },
+    { to: '/campaign', label: 'Campaign', icon: Sparkles, roles: ['admin', 'user'] },
+    { to: '/history', label: 'History', icon: History, roles: ['admin', 'user', 'viewer'] },
+    { to: '/prospects', label: 'Prospects', icon: Users, roles: ['admin', 'user', 'viewer'] },
+    { to: '/admin/analytics', label: 'Analytics', icon: BarChart, roles: ['admin'] },
+  ];
+
+  // Filter nav items based on user role
+  const visibleNavItems = navItems.filter(item => 
+    userRole && item.roles.includes(userRole)
+  );
 
   return (
     <aside 
@@ -48,7 +56,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
         {/* Navigation Items */}
         <nav className="flex-1 overflow-y-auto py-4">
           <div className="space-y-1 px-3">
-            {navItems.map(({ to, label, icon: Icon }) => {
+            {visibleNavItems.map(({ to, label, icon: Icon }) => {
               const isActive = location.pathname === to;
               return (
                 <Link
