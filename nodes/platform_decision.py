@@ -34,6 +34,7 @@ def decide_platform(state: AgentState) -> Dict[str, Any]:
     if force_email:
         logger.info("User explicitly requested email channel - forcing email")
         return {
+            **state,
             "selected_channel": "email",
             "channel_reasoning": "Email channel explicitly requested by user in prompt"
         }
