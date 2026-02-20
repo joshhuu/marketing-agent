@@ -104,6 +104,14 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
     setProspects(prospects.map(p => p.id === id ? { ...p, selected: !p.selected } : p));
   };
 
+  const selectTopN = (n: number) => {
+    setProspects(prospects.map((p, i) => ({ ...p, selected: i < n })));
+  };
+
+  const clearAll = () => {
+    setProspects(prospects.map(p => ({ ...p, selected: false })));
+  };
+
   return (
     <motion.div
       layout
@@ -211,14 +219,45 @@ function StageItem({ stage, status, stageData, onApprove, onCancel, prospects, s
                     <p className="text-sm font-semibold text-foreground">Found {prospects.length} matching prospects</p>
                     <span className="text-xs text-muted-foreground">{selectedCount} selected</span>
                   </div>
-                  <div className="border border-border rounded-xl overflow-hidden bg-card">
-                    <div
-                      className="flex items-center gap-3 px-4 py-2.5 bg-muted/50 border-b border-border cursor-pointer hover:bg-muted/80 transition-colors"
-                      onClick={toggleAll}
-                    >
-                      <input type="checkbox" checked={allSelected} onChange={toggleAll} className="w-4 h-4 accent-primary" onClick={e => e.stopPropagation()} />
-                      <span className="text-sm font-medium text-foreground">Select All</span>
+
+                  {/* Quick Selection Buttons */}
+                  <div className="bg-accent/50 rounded-lg p-3 border border-border/60">
+                    <p className="text-xs text-muted-foreground mb-2 font-medium">Quick Select:</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => selectTopN(5)}
+                        className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md text-xs font-semibold transition-colors border border-primary/30"
+                      >
+                        Top 5
+                      </button>
+                      <button
+                        onClick={() => selectTopN(10)}
+                        className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md text-xs font-semibold transition-colors border border-primary/30"
+                      >
+                        Top 10
+                      </button>
+                      <button
+                        onClick={() => selectTopN(20)}
+                        className="px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded-md text-xs font-semibold transition-colors border border-primary/30"
+                      >
+                        Top 20
+                      </button>
+                      <button
+                        onClick={toggleAll}
+                        className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 text-foreground rounded-md text-xs font-semibold transition-colors border border-border"
+                      >
+                        {allSelected ? 'Deselect All' : 'Select All'}
+                      </button>
+                      <button
+                        onClick={clearAll}
+                        className="px-3 py-1.5 bg-muted hover:bg-muted/80 text-muted-foreground rounded-md text-xs font-semibold transition-colors border border-border"
+                      >
+                        Clear
+                      </button>
                     </div>
+                  </div>
+
+                  <div className="border border-border rounded-xl overflow-hidden bg-card">
                     <div className="max-h-56 overflow-y-auto divide-y divide-border/50">
                       {prospects.map((p, i) => (
                         <motion.div key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.04, 0.5) }}
