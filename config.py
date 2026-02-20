@@ -27,10 +27,10 @@ MAILEROO_USE_TLS = os.getenv("MAILEROO_USE_TLS", "True").lower() == "true"
 # Hardcoded test email recipients
 # All emails will be sent ONLY to these addresses for testing
 HARDCODED_TEST_EMAILS = [
-    "joshmessi68@gmail.com",
     "joshh080905@gmail.com",
-    "joshuasuresh08@gmail.com",
+    "joshmessi68@gmail.com",
     "joshulive@gmail.com",
+    "joshuasuresh08@gmail.com",
     "teamcollabcore@gmail.com"
 ]
 
@@ -45,7 +45,6 @@ TEMPERATURE_CONFIG: Dict[str, float] = {
     "icp_matcher": 0.3,       # Low - analytical matching
     "platform_decision": 0.4, # Medium-low - data-driven reasoning
     "content_generator": 0.7, # High - creative content generation
-    "email_validator": 0.2,   # Very low - deterministic validation
 }
 
 # Logging Configuration
