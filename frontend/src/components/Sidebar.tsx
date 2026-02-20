@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Sparkles, History, Users, ChevronLeft, ChevronRight, BarChart } from 'lucide-react';
+import { LayoutDashboard, Sparkles, History, Users, ChevronLeft, ChevronRight, BarChart, Mail } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -17,6 +17,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
     { to: '/campaign', label: 'Campaign', icon: Sparkles, roles: ['admin', 'user'] },
     { to: '/history', label: 'History', icon: History, roles: ['admin', 'user', 'viewer'] },
     { to: '/prospects', label: 'Prospects', icon: Users, roles: ['admin', 'user', 'viewer'] },
+    { to: '/sent-emails', label: 'Sent Emails', icon: Mail, roles: ['admin', 'user'] },
     { to: '/admin/analytics', label: 'Analytics', icon: BarChart, roles: ['admin'] },
   ];
 

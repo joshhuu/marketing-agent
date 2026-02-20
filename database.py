@@ -222,6 +222,31 @@ class AuditLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class SentEmail(Base):
+    """Model for tracking sent emails"""
+    __tablename__ = "sent_emails"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    execution_id = Column(UUID(as_uuid=True), ForeignKey('classifications.id'), nullable=False)
+    prospect_id = Column(UUID(as_uuid=True), ForeignKey('prospects.id'), nullable=False)
+    prospect_name = Column(String(200), nullable=False)
+    prospect_email = Column(String(255), nullable=False)
+    prospect_company = Column(String(200))
+    prospect_job_title = Column(String(150))
+    
+    email_subject = Column(String(500), nullable=False)
+    email_body = Column(Text)
+    recipient_email = Column(String(255), nullable=False)  # Actual recipient (hardcoded test email)
+    
+    sent_by_role = Column(String(50), nullable=False)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    status = Column(String(50), default='sent')  # sent, failed, bounced, etc.
+    
+    # Relationships
+    prospect = relationship("Prospect")
+    classification = relationship("Classification")
+
+
 def get_db_session() -> Generator[Session, None, None]:
     """
     Create and yield a database session

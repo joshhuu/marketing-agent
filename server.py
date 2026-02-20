@@ -26,7 +26,7 @@ import time
 
 from graph import build_graph
 from state import AgentState
-from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog
+from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog, SentEmail
 from config import LOG_LEVEL, MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME, MAILEROO_USE_TLS
 
 # Configure logging
@@ -1743,11 +1743,11 @@ async def send_email_via_maileroo(
         
         # Find the specific prospect's content
         email_content = None
-        prospect_name = None
+        prospect_data = None
         for content in personalized_content:
             if content.get("prospect_id") == prospect_id:
                 email_content = content.get("email_message")
-                prospect_name = content.get("prospect_name", "Prospect")
+                prospect_data = content
                 break
         
         if not email_content:
@@ -1756,6 +1756,7 @@ async def send_email_via_maileroo(
                 detail=f"Email content not found for prospect {prospect_id}"
             )
         
+        prospect_name = prospect_data.get("prospect_name", "Prospect")
         email_subject = email_content.get("subject", "No Subject")
         email_body = email_content.get("body", "")
         
@@ -1801,6 +1802,28 @@ async def send_email_via_maileroo(
             
             logger.info(f"Email sent successfully to {recipient_email} via SMTP")
             
+            # Log sent email to database
+            try:
+                sent_email = SentEmail(
+                    execution_id=execution_id,
+                    prospect_id=prospect_id,
+                    prospect_name=prospect_name,
+                    prospect_email=prospect_data.get("prospect_email", "unknown"),
+                    prospect_company=prospect_data.get("prospect_company", ""),
+                    prospect_job_title=prospect_data.get("prospect_job_title", ""),
+                    email_subject=email_subject,
+                    email_body=email_body,
+                    recipient_email=recipient_email,
+                    sent_by_role=role,
+                    status='sent'
+                )
+                db.add(sent_email)
+                db.commit()
+                logger.info(f"Logged sent email to database: {sent_email.id}")
+            except Exception as log_error:
+                logger.error(f"Failed to log sent email: {log_error}")
+                # Don't fail the request if logging fails
+            
             return {
                 "success": True,
                 "message": f"Email sent successfully to {recipient_email}",
@@ -1832,6 +1855,84 @@ async def send_email_via_maileroo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to send email: {str(e)}"
+        )
+
+
+@app.get("/history/sent-emails")
+async def get_sent_emails(
+    execution_id: Optional[str] = None,
+    prospect_id: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Get sent email history
+    
+    **Role Required:** Admin or User (Viewers cannot access)
+    
+    Admins can see all sent emails. Users can see all sent emails too
+    (since this is for tracking marketing campaigns).
+    
+    **Query Parameters:**
+    - execution_id: Filter by execution/campaign ID
+    - prospect_id: Filter by prospect ID
+    - limit: Maximum number of results (default: 100)
+    - offset: Pagination offset (default: 0)
+    
+    **Headers:**
+    - X-User-Role: "user" or "admin"
+    """
+    try:
+        query = db.query(SentEmail)
+        
+        # Apply filters
+        if execution_id:
+            query = query.filter(SentEmail.execution_id == execution_id)
+        if prospect_id:
+            query = query.filter(SentEmail.prospect_id == prospect_id)
+        
+        # Get total count before pagination
+        total_count = query.count()
+        
+        # Order by sent_at descending (most recent first)
+        query = query.order_by(SentEmail.sent_at.desc())
+        
+        # Apply pagination
+        sent_emails = query.limit(limit).offset(offset).all()
+        
+        # Format response
+        results = []
+        for email in sent_emails:
+            results.append({
+                "id": str(email.id),
+                "execution_id": email.execution_id,
+                "prospect_id": email.prospect_id,
+                "prospect_name": email.prospect_name,
+                "prospect_email": email.prospect_email,
+                "prospect_company": email.prospect_company,
+                "prospect_job_title": email.prospect_job_title,
+                "email_subject": email.email_subject,
+                "email_body": email.email_body,
+                "recipient_email": email.recipient_email,
+                "sent_by_role": email.sent_by_role,
+                "sent_at": email.sent_at.isoformat() if email.sent_at else None,
+                "status": email.status
+            })
+        
+        return {
+            "sent_emails": results,
+            "total_count": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching sent emails: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve sent emails: {str(e)}"
         )
 
 

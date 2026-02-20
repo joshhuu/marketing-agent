@@ -160,6 +160,29 @@ export interface ProspectDetail {
   }>;
 }
 
+export interface SentEmail {
+  id: string;
+  execution_id: string;
+  prospect_id: string;
+  prospect_name: string;
+  prospect_email: string;
+  prospect_company: string;
+  prospect_job_title: string;
+  email_subject: string;
+  email_body: string;
+  recipient_email: string;
+  sent_by_role: string;
+  sent_at: string;
+  status: string;
+}
+
+export interface SentEmailsResponse {
+  sent_emails: SentEmail[];
+  total_count: number;
+  limit: number;
+  offset: number;
+}
+
 export class ApiClient {
   /**
    * Execute campaign with SSE streaming
@@ -507,6 +530,40 @@ export class ApiClient {
     if (!response.ok) {
       const error = await response.json();
       throw new Error(error.detail || 'Failed to send email');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get sent email history
+   */
+  static async getSentEmails(
+    executionId?: string,
+    prospectId?: string,
+    limit: number = 100,
+    offset: number = 0
+  ): Promise<SentEmailsResponse> {
+    const params = new URLSearchParams();
+    if (executionId) params.append('execution_id', executionId);
+    if (prospectId) params.append('prospect_id', prospectId);
+    params.append('limit', limit.toString());
+    params.append('offset', offset.toString());
+
+    const response = await fetch(
+      `${API_BASE_URL}/history/sent-emails?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': getUserRole(),
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch sent emails');
     }
 
     return response.json();

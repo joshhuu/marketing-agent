@@ -10,6 +10,7 @@ import CampaignPage from "./pages/Campaign";
 import HistoryPage from "./pages/History";
 import CampaignDetail from "./pages/CampaignDetail";
 import ProspectsPage from "./pages/Prospects";
+import SentEmailsPage from "./pages/SentEmails";
 import AdminAnalyticsPage from "./pages/AdminAnalytics";
 import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
@@ -51,6 +52,14 @@ const AppLayout = () => {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/history/:id" element={<CampaignDetail />} />
             <Route path="/prospects" element={<ProspectsPage />} />
+            <Route 
+              path="/sent-emails" 
+              element={
+                <ProtectedRoute allowedRoles={["admin", "user"]}>
+                  <SentEmailsPage />
+                </ProtectedRoute>
+              } 
+            />
             <Route 
               path="/admin/analytics" 
               element={
