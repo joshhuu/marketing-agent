@@ -418,4 +418,71 @@ export class ApiClient {
 
     return response.json();
   }
+
+  /**
+   * Update personalized content manually
+   */
+  static async updatePersonalizedContent(
+    executionId: string,
+    prospectId: string,
+    contentUpdate: {
+      linkedin_message?: string;
+      email_subject?: string;
+      email_body?: string;
+      call_script_opener?: string;
+      call_script_objections?: string[];
+      call_script_close?: string;
+    }
+  ): Promise<{ success: boolean; updated_content: PersonalizedContent }> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}/personalized-content/${prospectId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': getUserRole(),
+        },
+        body: JSON.stringify(contentUpdate),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to update content');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Regenerate personalized content using AI
+   */
+  static async regeneratePersonalizedContent(
+    executionId: string,
+    prospectId: string,
+    customPrompt: string,
+    contentType?: string
+  ): Promise<{ success: boolean; updated_content: PersonalizedContent }> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}/personalized-content/${prospectId}/regenerate`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-User-Role': getUserRole(),
+        },
+        body: JSON.stringify({
+          custom_prompt: customPrompt,
+          content_type: contentType,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to regenerate content');
+    }
+
+    return response.json();
+  }
 }

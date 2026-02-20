@@ -894,6 +894,302 @@ async def delete_execution(
         )
 
 
+class UpdateContentRequest(BaseModel):
+    """Schema for updating personalized content"""
+    linkedin_message: Optional[str] = None
+    email_subject: Optional[str] = None
+    email_body: Optional[str] = None
+    call_script_opener: Optional[str] = None
+    call_script_objections: Optional[List[str]] = None
+    call_script_close: Optional[str] = None
+
+
+class RegenerateContentRequest(BaseModel):
+    """Schema for AI-assisted content regeneration"""
+    custom_prompt: str = Field(
+        ...,
+        description="Custom instructions for modifying the content",
+        min_length=10,
+        max_length=1000
+    )
+    content_type: Optional[str] = Field(
+        None,
+        description="Specific type to regenerate: 'linkedin', 'email', 'call_script', or 'all'"
+    )
+
+
+@app.patch("/history/executions/{execution_id}/personalized-content/{prospect_id}")
+async def update_personalized_content(
+    execution_id: str,
+    prospect_id: str,
+    content_update: UpdateContentRequest,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Update personalized content for a specific prospect manually
+    
+    **Role Required:** Admin or User (Viewers cannot edit)
+    
+    Allows manual editing of generated content for a specific prospect.
+    
+    **Headers:**
+    - X-User-Role: "user" or "admin"
+    """
+    logger.info(f"Updating personalized content for execution {execution_id}, prospect {prospect_id}")
+    
+    try:
+        # Fetch the execution details
+        execution_detail = db.query(ExecutionDetail)\
+            .filter(ExecutionDetail.classification_id == execution_id)\
+            .first()
+        
+        if not execution_detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution details not found for {execution_id}"
+            )
+        
+        # Get personalized content array
+        personalized_content = execution_detail.personalized_content or []
+        
+        # Find the specific prospect's content
+        prospect_found = False
+        for idx, content in enumerate(personalized_content):
+            if content.get("prospect_id") == prospect_id:
+                prospect_found = True
+                
+                # Update fields if provided
+                if content_update.linkedin_message is not None:
+                    content["linkedin_message"] = content_update.linkedin_message
+                
+                if content_update.email_subject is not None or content_update.email_body is not None:
+                    if "email_message" not in content:
+                        content["email_message"] = {}
+                    if content_update.email_subject is not None:
+                        content["email_message"]["subject"] = content_update.email_subject
+                    if content_update.email_body is not None:
+                        content["email_message"]["body"] = content_update.email_body
+                
+                if (content_update.call_script_opener is not None or 
+                    content_update.call_script_objections is not None or 
+                    content_update.call_script_close is not None):
+                    if "call_script" not in content:
+                        content["call_script"] = {}
+                    if content_update.call_script_opener is not None:
+                        content["call_script"]["opener"] = content_update.call_script_opener
+                    if content_update.call_script_objections is not None:
+                        content["call_script"]["objections"] = content_update.call_script_objections
+                    if content_update.call_script_close is not None:
+                        content["call_script"]["close"] = content_update.call_script_close
+                
+                personalized_content[idx] = content
+                break
+        
+        if not prospect_found:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prospect {prospect_id} not found in personalized content"
+            )
+        
+        # Update the database
+        execution_detail.personalized_content = personalized_content
+        db.commit()
+        db.refresh(execution_detail)
+        
+        logger.info(f"Successfully updated content for prospect {prospect_id}")
+        
+        return {
+            "success": True,
+            "message": "Personalized content updated successfully",
+            "execution_id": execution_id,
+            "prospect_id": prospect_id,
+            "updated_content": personalized_content[
+                next(i for i, c in enumerate(personalized_content) if c.get("prospect_id") == prospect_id)
+            ],
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating personalized content: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update personalized content: {str(e)}"
+        )
+
+
+@app.post("/history/executions/{execution_id}/personalized-content/{prospect_id}/regenerate")
+async def regenerate_personalized_content(
+    execution_id: str,
+    prospect_id: str,
+    regenerate_request: RegenerateContentRequest,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Regenerate personalized content using AI with custom instructions
+    
+    **Role Required:** Admin or User (Viewers cannot regenerate)
+    
+    Uses Gemini API to modify existing content based on custom prompt.
+    The current content is sent as context along with the custom prompt.
+    
+    **Headers:**
+    - X-User-Role: "user" or "admin"
+    """
+    logger.info(f"Regenerating content for execution {execution_id}, prospect {prospect_id}")
+    
+    try:
+        # Fetch the execution details
+        execution_detail = db.query(ExecutionDetail)\
+            .filter(ExecutionDetail.classification_id == execution_id)\
+            .first()
+        
+        if not execution_detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Execution details not found for {execution_id}"
+            )
+        
+        # Get personalized content array
+        personalized_content = execution_detail.personalized_content or []
+        
+        # Find the specific prospect's content
+        current_content = None
+        prospect_idx = None
+        for idx, content in enumerate(personalized_content):
+            if content.get("prospect_id") == prospect_id:
+                current_content = content
+                prospect_idx = idx
+                break
+        
+        if not current_content:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prospect {prospect_id} not found in personalized content"
+            )
+        
+        # Import LLM here to use for regeneration
+        from utils.llm import get_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+        
+        llm = get_llm(temperature=0.7)
+        
+        # Build context from current content
+        content_context = f"""
+Current Personalized Content for {current_content.get('prospect_name', 'Prospect')}:
+- Job Title: {current_content.get('prospect_job_title', 'N/A')}
+- Company: {current_content.get('prospect_company', 'N/A')}
+
+LinkedIn Message:
+{current_content.get('linkedin_message', 'N/A')}
+
+Email Subject: {current_content.get('email_message', {}).get('subject', 'N/A')}
+Email Body:
+{current_content.get('email_message', {}).get('body', 'N/A')}
+
+Call Script Opener:
+{current_content.get('call_script', {}).get('opener', 'N/A')}
+
+Call Script Close:
+{current_content.get('call_script', {}).get('close', 'N/A')}
+"""
+        
+        # Create regeneration prompt
+        system_message = SystemMessage(content="""You are an expert marketing content writer. 
+Your task is to modify the provided marketing content based on the user's custom instructions.
+Maintain the professional tone and personalization for the prospect.
+Return ONLY a JSON object with the modified content in this exact structure:
+{
+  "linkedin_message": "modified linkedin message here",
+  "email_message": {
+    "subject": "modified email subject",
+    "body": "modified email body"
+  },
+  "call_script": {
+    "opener": "modified call opener",
+    "objections": ["objection response 1", "objection response 2", "objection response 3"],
+    "close": "modified call close"
+  }
+}
+
+Ensure all fields are filled even if they weren't modified. Keep the JSON valid and properly formatted.""")
+        
+        human_message = HumanMessage(content=f"""{content_context}
+
+User's Custom Instructions:
+{regenerate_request.custom_prompt}
+
+Please regenerate the marketing content based on these instructions. Return only the JSON object.""")
+        
+        # Call Gemini API
+        response = llm.invoke([system_message, human_message])
+        response_text = response.content.strip()
+        
+        # Try to extract JSON from response
+        import re
+        json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+        if json_match:
+            response_text = json_match.group()
+        
+        # Parse the response
+        try:
+            regenerated_content = json.loads(response_text)
+        except json.JSONDecodeError:
+            # If JSON parsing fails, try to clean it
+            response_text = response_text.replace('```json', '').replace('```', '').strip()
+            regenerated_content = json.loads(response_text)
+        
+        # Update the content while preserving prospect info
+        updated_content = {
+            "prospect_id": current_content["prospect_id"],
+            "prospect_name": current_content["prospect_name"],
+            "prospect_company": current_content["prospect_company"],
+            "prospect_job_title": current_content["prospect_job_title"],
+            "linkedin_message": regenerated_content.get("linkedin_message", current_content.get("linkedin_message")),
+            "email_message": regenerated_content.get("email_message", current_content.get("email_message")),
+            "call_script": regenerated_content.get("call_script", current_content.get("call_script"))
+        }
+        
+        # Update in the array
+        personalized_content[prospect_idx] = updated_content
+        
+        # Save to database
+        execution_detail.personalized_content = personalized_content
+        db.commit()
+        db.refresh(execution_detail)
+        
+        logger.info(f"Successfully regenerated content for prospect {prospect_id}")
+        
+        return {
+            "success": True,
+            "message": "Content regenerated successfully using AI",
+            "execution_id": execution_id,
+            "prospect_id": prospect_id,
+            "updated_content": updated_content,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse AI response: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to parse AI response. Please try again."
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error regenerating content: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to regenerate content: {str(e)}"
+        )
+
+
 @app.get("/prospects/recent")
 async def get_recent_campaign_prospects(
     limit: int = 50,

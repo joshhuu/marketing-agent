@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar, Target, MessageSquare, Mail, Phone, Package, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar, Target, MessageSquare, Mail, Phone, Package, AlertCircle, Edit2, Sparkles, Save, X } from 'lucide-react';
 import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
 import { FormattedText } from '../lib/formatters';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { userRole } = useAuth();
   const [executionDetail, setExecutionDetail] = useState<ExecutionDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +22,16 @@ export default function CampaignDetail() {
     content: true,
   });
   const [selectedProspectIndex, setSelectedProspectIndex] = useState(0);
+  
+  // Editing state
+  const [isEditing, setIsEditing] = useState<string | null>(null); // 'linkedin' | 'email' | 'call_script' | null
+  const [editedContent, setEditedContent] = useState<Partial<PersonalizedContent>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // AI Regeneration state
+  const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+  const [regeneratePrompt, setRegeneratePrompt] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -48,6 +60,108 @@ export default function CampaignDetail() {
       ...prev,
       [section]: !prev[section],
     }));
+  };
+
+  const startEditing = (contentType: string) => {
+    if (!executionDetail?.details.personalized_content) return;
+    
+    const currentContent = executionDetail.details.personalized_content[selectedProspectIndex];
+    setEditedContent(currentContent);
+    setIsEditing(contentType);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(null);
+    setEditedContent({});
+  };
+
+  const saveContent = async () => {
+    if (!executionDetail || !id) return;
+    
+    const currentContent = executionDetail.details.personalized_content[selectedProspectIndex];
+    if (!currentContent) return;
+
+    setIsSaving(true);
+    try {
+      const updatePayload: any = {};
+      
+      if (editedContent.linkedin_message !== undefined) {
+        updatePayload.linkedin_message = editedContent.linkedin_message;
+      }
+      if (editedContent.email_message) {
+        updatePayload.email_subject = editedContent.email_message.subject;
+        updatePayload.email_body = editedContent.email_message.body;
+      }
+      if (editedContent.call_script) {
+        updatePayload.call_script_opener = editedContent.call_script.opener;
+        updatePayload.call_script_objections = editedContent.call_script.objections;
+        updatePayload.call_script_close = editedContent.call_script.close;
+      }
+
+      const response = await ApiClient.updatePersonalizedContent(
+        id,
+        currentContent.prospect_id,
+        updatePayload
+      );
+
+      // Update local state with new content
+      if (executionDetail.details.personalized_content) {
+        const updatedContent = [...executionDetail.details.personalized_content];
+        updatedContent[selectedProspectIndex] = response.updated_content;
+        
+        setExecutionDetail({
+          ...executionDetail,
+          details: {
+            ...executionDetail.details,
+            personalized_content: updatedContent
+          }
+        });
+      }
+
+      setIsEditing(null);
+      setEditedContent({});
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save content');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    if (!executionDetail || !id || !regeneratePrompt.trim()) return;
+    
+    const currentContent = executionDetail.details.personalized_content[selectedProspectIndex];
+    if (!currentContent) return;
+
+    setIsRegenerating(true);
+    try {
+      const response = await ApiClient.regeneratePersonalizedContent(
+        id,
+        currentContent.prospect_id,
+        regeneratePrompt
+      );
+
+      // Update local state with regenerated content
+      if (executionDetail.details.personalized_content) {
+        const updatedContent = [...executionDetail.details.personalized_content];
+        updatedContent[selectedProspectIndex] = response.updated_content;
+        
+        setExecutionDetail({
+          ...executionDetail,
+          details: {
+            ...executionDetail.details,
+            personalized_content: updatedContent
+          }
+        });
+      }
+
+      setShowRegenerateModal(false);
+      setRegeneratePrompt('');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to regenerate content');
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   if (!id) {
@@ -287,16 +401,44 @@ export default function CampaignDetail() {
                         {/* Display selected prospect's content */}
                         {executionDetail.details.personalized_content[selectedProspectIndex] && (
                           <div className="space-y-6">
+                            {/* Action Buttons - Only show for admin and user roles */}
+                            {userRole !== 'viewer' && (
+                              <div className="flex gap-2 justify-end">
+                                {!isEditing && (
+                                  <button
+                                    onClick={() => setShowRegenerateModal(true)}
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg"
+                                  >
+                                    <Sparkles className="w-4 h-4" />
+                                    <span className="text-sm font-medium">Regenerate with AI</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
                             {/* LinkedIn Message */}
                             {executionDetail.details.personalized_content[selectedProspectIndex].linkedin_message && (
                               <ContentBlock
                                 icon={<MessageSquare className="w-4 h-4" />}
                                 title="LinkedIn Message"
                                 iconColor="bg-blue-500"
+                                onEdit={userRole !== 'viewer' ? () => startEditing('linkedin') : undefined}
+                                isEditing={isEditing === 'linkedin'}
+                                onSave={saveContent}
+                                onCancel={cancelEditing}
+                                isSaving={isSaving}
                               >
-                                <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
-                                  {executionDetail.details.personalized_content[selectedProspectIndex].linkedin_message}
-                                </FormattedText>
+                                {isEditing === 'linkedin' ? (
+                                  <textarea
+                                    value={editedContent.linkedin_message || ''}
+                                    onChange={(e) => setEditedContent({ ...editedContent, linkedin_message: e.target.value })}
+                                    className="w-full min-h-[200px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+                                  />
+                                ) : (
+                                  <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
+                                    {executionDetail.details.personalized_content[selectedProspectIndex].linkedin_message}
+                                  </FormattedText>
+                                )}
                               </ContentBlock>
                             )}
 
@@ -306,21 +448,61 @@ export default function CampaignDetail() {
                                 icon={<Mail className="w-4 h-4" />}
                                 title="Email"
                                 iconColor="bg-green-500"
+                                onEdit={userRole !== 'viewer' ? () => startEditing('email') : undefined}
+                                isEditing={isEditing === 'email'}
+                                onSave={saveContent}
+                                onCancel={cancelEditing}
+                                isSaving={isSaving}
                               >
-                                <div className="space-y-4">
-                                  <div>
-                                    <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Subject</p>
-                                    <FormattedText className="text-foreground font-medium">
-                                      {executionDetail.details.personalized_content[selectedProspectIndex].email_message.subject}
-                                    </FormattedText>
+                                {isEditing === 'email' ? (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Subject</p>
+                                      <input
+                                        type="text"
+                                        value={editedContent.email_message?.subject || ''}
+                                        onChange={(e) => setEditedContent({
+                                          ...editedContent,
+                                          email_message: {
+                                            ...editedContent.email_message!,
+                                            subject: e.target.value,
+                                            body: editedContent.email_message?.body || ''
+                                          }
+                                        })}
+                                        className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white text-gray-900"
+                                      />
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Body</p>
+                                      <textarea
+                                        value={editedContent.email_message?.body || ''}
+                                        onChange={(e) => setEditedContent({
+                                          ...editedContent,
+                                          email_message: {
+                                            subject: editedContent.email_message?.subject || '',
+                                            body: e.target.value
+                                          }
+                                        })}
+                                        className="w-full min-h-[300px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white text-gray-900"
+                                      />
+                                    </div>
                                   </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Body</p>
-                                    <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
-                                      {executionDetail.details.personalized_content[selectedProspectIndex].email_message.body}
-                                    </FormattedText>
+                                ) : (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Subject</p>
+                                      <FormattedText className="text-foreground font-medium">
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].email_message.subject}
+                                      </FormattedText>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Body</p>
+                                      <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].email_message.body}
+                                      </FormattedText>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </ContentBlock>
                             )}
 
@@ -330,42 +512,82 @@ export default function CampaignDetail() {
                                 icon={<Phone className="w-4 h-4" />}
                                 title="Call Script"
                                 iconColor="bg-purple-500"
+                                onEdit={userRole !== 'viewer' ? () => startEditing('call_script') : undefined}
+                                isEditing={isEditing === 'call_script'}
+                                onSave={saveContent}
+                                onCancel={cancelEditing}
+                                isSaving={isSaving}
                               >
-                                <div className="space-y-4">
-                                  <div>
-                                    <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Opener</p>
-                                    <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
-                                      {executionDetail.details.personalized_content[selectedProspectIndex].call_script.opener}
-                                    </FormattedText>
-                                  </div>
-                                  
-                                  {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections &&
-                                    executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.length > 0 && (
-                                      <div>
-                                        <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">
-                                          Objection Handling
-                                        </p>
-                                        <div className="space-y-2">
-                                          {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.map((obj, idx) => (
-                                            <div key={idx} className="bg-muted/50 rounded-lg p-3 border border-border">
-                                              <FormattedText className="text-sm text-foreground">
-                                                {obj}
-                                              </FormattedText>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-
-                                  {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close && (
+                                {isEditing === 'call_script' ? (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Opener</p>
+                                      <textarea
+                                        value={editedContent.call_script?.opener || ''}
+                                        onChange={(e) => setEditedContent({
+                                          ...editedContent,
+                                          call_script: {
+                                            opener: e.target.value,
+                                            objections: editedContent.call_script?.objections || [],
+                                            close: editedContent.call_script?.close || ''
+                                          }
+                                        })}
+                                        className="w-full min-h-[100px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
+                                      />
+                                    </div>
                                     <div>
                                       <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Close</p>
+                                      <textarea
+                                        value={editedContent.call_script?.close || ''}
+                                        onChange={(e) => setEditedContent({
+                                          ...editedContent,
+                                          call_script: {
+                                            opener: editedContent.call_script?.opener || '',
+                                            objections: editedContent.call_script?.objections || [],
+                                            close: e.target.value
+                                          }
+                                        })}
+                                        className="w-full min-h-[100px] px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900"
+                                      />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Opener</p>
                                       <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
-                                        {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close}
+                                        {executionDetail.details.personalized_content[selectedProspectIndex].call_script.opener}
                                       </FormattedText>
                                     </div>
-                                  )}
-                                </div>
+                                    
+                                    {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections &&
+                                      executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.length > 0 && (
+                                        <div>
+                                          <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">
+                                            Objection Handling
+                                          </p>
+                                          <div className="space-y-2">
+                                            {executionDetail.details.personalized_content[selectedProspectIndex].call_script.objections.map((obj, idx) => (
+                                              <div key={idx} className="bg-muted/50 rounded-lg p-3 border border-border">
+                                                <FormattedText className="text-sm text-foreground">
+                                                  {obj}
+                                                </FormattedText>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                    {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close && (
+                                      <div>
+                                        <p className="text-xs text-muted-foreground uppercase font-semibold mb-2">Close</p>
+                                        <FormattedText className="text-foreground whitespace-pre-wrap leading-relaxed">
+                                          {executionDetail.details.personalized_content[selectedProspectIndex].call_script.close}
+                                        </FormattedText>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </ContentBlock>
                             )}
                           </div>
@@ -492,6 +714,76 @@ export default function CampaignDetail() {
             </div>
           </motion.div>
         )}
+
+        {/* AI Regenerate Modal */}
+        {showRegenerateModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900">Regenerate with AI</h3>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowRegenerateModal(false);
+                    setRegeneratePrompt('');
+                  }}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <p className="text-sm text-gray-600 mb-4">
+                Provide custom instructions to modify the generated content using AI. The current content will be sent as context.
+              </p>
+              
+              <textarea
+                value={regeneratePrompt}
+                onChange={(e) => setRegeneratePrompt(e.target.value)}
+                placeholder="E.g., Make it more casual and friendly, add a specific mention of their recent company achievement, emphasize ROI benefits..."
+                className="w-full min-h-[150px] px-4 py-3 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 resize-none"
+              />
+              
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowRegenerateModal(false);
+                    setRegeneratePrompt('');
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                  disabled={isRegenerating}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRegenerate}
+                  disabled={!regeneratePrompt.trim() || isRegenerating}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg hover:from-purple-600 hover:to-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium inline-flex items-center justify-center gap-2"
+                >
+                  {isRegenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Regenerate
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -560,17 +852,64 @@ interface ContentBlockProps {
   title: string;
   iconColor: string;
   children: React.ReactNode;
+  onEdit?: () => void;
+  isEditing?: boolean;
+  onSave?: () => void;
+  onCancel?: () => void;
+  isSaving?: boolean;
 }
 
-function ContentBlock({ icon, title, iconColor, children }: ContentBlockProps) {
+function ContentBlock({ icon, title, iconColor, children, onEdit, isEditing, onSave, onCancel, isSaving }: ContentBlockProps) {
   return (
     <div>
-      <h4 className="font-semibold text-foreground mb-3 flex items-center gap-2">
-        <span className={`w-6 h-6 rounded-full ${iconColor} text-white flex items-center justify-center`}>
-          {icon}
-        </span>
-        {title}
-      </h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="font-semibold text-foreground flex items-center gap-2">
+          <span className={`w-6 h-6 rounded-full ${iconColor} text-white flex items-center justify-center`}>
+            {icon}
+          </span>
+          {title}
+        </h4>
+        
+        {onEdit && !isEditing && (
+          <button
+            onClick={onEdit}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+          >
+            <Edit2 className="w-3.5 h-3.5" />
+            Edit
+          </button>
+        )}
+        
+        {isEditing && (
+          <div className="flex gap-2">
+            <button
+              onClick={onCancel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              disabled={isSaving}
+            >
+              <X className="w-3.5 h-3.5" />
+              Cancel
+            </button>
+            <button
+              onClick={onSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  Save
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
       <div className="bg-muted/30 rounded-xl p-4 border border-border">
         {children}
       </div>
