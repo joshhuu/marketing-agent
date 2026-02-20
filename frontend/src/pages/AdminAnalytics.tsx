@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, AlertCircle, Clock, TrendingUp } from "lucide-react";
+import { Activity, AlertCircle, Clock, TrendingUp, Download, FileJson, FileSpreadsheet } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface APIStat {
   total_calls: number;
@@ -43,11 +44,46 @@ const AdminAnalyticsPage = () => {
   const { userRole } = useAuth();
   const [stats, setStats] = useState<APIStat | null>(null);
   const [logs, setLogs] = useState<APILog[]>([]);
+  const [promptLogs, setPromptLogs] = useState<APILog[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<string>("");
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (format: "csv" | "json", promptsOnly: boolean = false) => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        format,
+        prompts_only: promptsOnly.toString()
+      });
+      
+      const response = await fetch(`http://localhost:8000/admin/api-calls/export?${params}`, {
+        headers: {
+          "X-User-Role": userRole || "admin",
+        },
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `api_logs_${new Date().toISOString().split('T')[0]}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error("Failed to export logs:", error);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchAPILogs = async () => {
     try {
+      // Fetch all API calls for the table
       const response = await fetch("http://localhost:8000/admin/api-calls?limit=20", {
         headers: {
           "X-User-Role": userRole || "admin",
@@ -64,6 +100,18 @@ const AdminAnalyticsPage = () => {
           minute: '2-digit',
           second: '2-digit'
         }));
+      }
+
+      // Fetch prompt logs separately (won't get pushed out by other API calls)
+      const promptResponse = await fetch("http://localhost:8000/admin/api-calls?limit=50&prompts_only=true", {
+        headers: {
+          "X-User-Role": userRole || "admin",
+        },
+      });
+
+      if (promptResponse.ok) {
+        const promptData = await promptResponse.json();
+        setPromptLogs(promptData.logs);
       }
     } catch (error) {
       console.error("Failed to fetch API logs:", error);
@@ -104,11 +152,35 @@ const AdminAnalyticsPage = () => {
             Monitor API usage, performance metrics, and system health
           </p>
         </div>
-        {lastUpdate && (
-          <div className="text-sm text-gray-500">
-            Last updated: <span className="font-semibold">{lastUpdate} IST</span>
+        <div className="flex items-center gap-4">
+          {lastUpdate && (
+            <div className="text-sm text-gray-500">
+              Last updated: <span className="font-semibold">{lastUpdate} IST</span>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleExport("csv", false)}
+              disabled={exporting}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Export CSV
+            </Button>
+            <Button
+              onClick={() => handleExport("json", false)}
+              disabled={exporting}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <FileJson className="w-4 h-4" />
+              Export JSON
+            </Button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -231,15 +303,39 @@ const AdminAnalyticsPage = () => {
       {/* Prompt Logs Section */}
       <Card className="mt-8">
         <CardHeader>
-          <CardTitle>Prompt Logs</CardTitle>
-          <CardDescription>AI prompts sent to the system for campaign generation</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Prompt Logs</CardTitle>
+              <CardDescription>AI prompts sent to the system for campaign generation</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => handleExport("csv", true)}
+                disabled={exporting}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export Prompts CSV
+              </Button>
+              <Button
+                onClick={() => handleExport("json", true)}
+                disabled={exporting}
+                variant="outline"
+                size="sm"
+                className="gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Export Prompts JSON
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {logs.filter(log => log.prompt_preview).length > 0 ? (
-              logs
-                .filter(log => log.prompt_preview)
-                .map((log) => (
+            {promptLogs.length > 0 ? (
+              promptLogs.map((log) => (
                   <div
                     key={log.id}
                     className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"

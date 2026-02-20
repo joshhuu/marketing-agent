@@ -5,6 +5,8 @@ Provides REST API with SSE streaming, RBAC, and Human-in-the-Loop capabilities
 import logging
 import asyncio
 import json
+import csv
+import io
 from datetime import datetime
 from typing import Optional, List, Dict, Any, Literal
 from uuid import uuid4
@@ -12,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field, validator
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
@@ -1124,6 +1126,7 @@ async def get_system_logs(
 async def get_api_call_logs(
     limit: int = 100,
     offset: int = 0,
+    prompts_only: bool = False,
     role: str = Depends(require_role([Role.ADMIN])),
     db: Session = Depends(get_db_session)
 ):
@@ -1136,15 +1139,25 @@ async def get_api_call_logs(
     
     **Headers:**
     - X-User-Role: "admin"
+    
+    **Query Parameters:**
+    - prompts_only: If true, only returns logs that contain prompts
     """
-    logger.info(f"Admin accessing API call logs (limit: {limit}, offset: {offset})")
+    logger.info(f"Admin accessing API call logs (limit: {limit}, offset: {offset}, prompts_only: {prompts_only})")
     
     try:
+        # Build base query
+        base_query = db.query(APICallLog)
+        
+        # Filter for prompts only if requested
+        if prompts_only:
+            base_query = base_query.filter(APICallLog.prompt_preview.isnot(None))
+        
         # Get total count
-        total_count = db.query(APICallLog).count()
+        total_count = base_query.count()
         
         # Get logs
-        logs = db.query(APICallLog)\
+        logs = base_query\
             .order_by(desc(APICallLog.created_at))\
             .limit(limit)\
             .offset(offset)\
@@ -1187,6 +1200,143 @@ async def get_api_call_logs(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve API call logs: {str(e)}"
+        )
+
+
+@app.get("/admin/api-calls/export")
+async def export_api_call_logs(
+    format: Literal["csv", "json"] = "csv",
+    prompts_only: bool = False,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    user_role: Optional[str] = None,
+    endpoint: Optional[str] = None,
+    min_status: Optional[int] = None,
+    max_status: Optional[int] = None,
+    role: str = Depends(require_role([Role.ADMIN])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Export API call logs with filters (Admin only)
+    
+    **Role Required:** Admin ONLY
+    
+    **Query Parameters:**
+    - format: "csv" or "json" (default: csv)
+    - prompts_only: Filter to only logs with prompts
+    - start_date: ISO format start date (e.g., 2026-02-01)
+    - end_date: ISO format end date (e.g., 2026-02-28)
+    - user_role: Filter by role (admin/user/viewer)
+    - endpoint: Filter by endpoint path
+    - min_status: Minimum status code
+    - max_status: Maximum status code
+    """
+    logger.info(f"Admin exporting API logs (format: {format}, prompts_only: {prompts_only})")
+    
+    try:
+        # Build query with filters
+        query = db.query(APICallLog)
+        
+        if prompts_only:
+            query = query.filter(APICallLog.prompt_preview.isnot(None))
+        
+        if start_date:
+            start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            query = query.filter(APICallLog.created_at >= start_dt)
+        
+        if end_date:
+            end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            query = query.filter(APICallLog.created_at <= end_dt)
+        
+        if user_role:
+            query = query.filter(APICallLog.user_role == user_role)
+        
+        if endpoint:
+            query = query.filter(APICallLog.endpoint.contains(endpoint))
+        
+        if min_status is not None:
+            query = query.filter(APICallLog.status_code >= min_status)
+        
+        if max_status is not None:
+            query = query.filter(APICallLog.status_code <= max_status)
+        
+        # Get all matching logs
+        logs = query.order_by(desc(APICallLog.created_at)).all()
+        
+        if format == "csv":
+            # Create CSV
+            output = io.StringIO()
+            fieldnames = [
+                'id', 'endpoint', 'method', 'user_role', 'status_code',
+                'response_time_ms', 'ip_address', 'prompt_preview', 'created_at'
+            ]
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for log in logs:
+                writer.writerow({
+                    'id': str(log.id),
+                    'endpoint': log.endpoint,
+                    'method': log.method,
+                    'user_role': log.user_role,
+                    'status_code': log.status_code,
+                    'response_time_ms': log.response_time_ms,
+                    'ip_address': log.ip_address or '',
+                    'prompt_preview': log.prompt_preview or '',
+                    'created_at': log.created_at.isoformat() if log.created_at else ''
+                })
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            filename = f"api_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            return Response(
+                content=csv_content,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+        
+        else:  # JSON format
+            logs_data = [
+                {
+                    "id": str(log.id),
+                    "endpoint": log.endpoint,
+                    "method": log.method,
+                    "user_role": log.user_role,
+                    "status_code": log.status_code,
+                    "response_time_ms": log.response_time_ms,
+                    "ip_address": log.ip_address,
+                    "prompt_preview": log.prompt_preview,
+                    "created_at": log.created_at.isoformat() + 'Z' if log.created_at else None
+                }
+                for log in logs
+            ]
+            
+            filename = f"api_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            return Response(
+                content=json.dumps({
+                    "exported_at": datetime.now().isoformat(),
+                    "total_records": len(logs_data),
+                    "filters": {
+                        "prompts_only": prompts_only,
+                        "start_date": start_date,
+                        "end_date": end_date,
+                        "user_role": user_role,
+                        "endpoint": endpoint,
+                        "min_status": min_status,
+                        "max_status": max_status
+                    },
+                    "logs": logs_data
+                }, indent=2),
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename={filename}"}
+            )
+    
+    except Exception as e:
+        logger.error(f"Error exporting API logs: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export API logs: {str(e)}"
         )
 
 

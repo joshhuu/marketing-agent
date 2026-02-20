@@ -8,9 +8,9 @@ const MIN_CHARS = 20;
 const MAX_CHARS = 1000;
 
 const EXAMPLES = [
-  "I'm selling HR payroll software to HR managers at mid-sized companies in the UK. Need to generate leads ASAP.",
-  "Target CTOs at financial companies in London with our cybersecurity compliance platform. Urgent — Q1 deadlines approaching.",
-  "Reach out to sales directors at tech startups about our new CRM tool. Want to book demos next week.",
+  "I'm selling payroll software to managers at companies in the UK. Need to generate leads ASAP.",
+  "Target CTOs at financial companies with our cybersecurity compliance platform. Urgent — Q1 deadlines approaching.",
+  "Reach out to directors about our new CRM tool. Want to book demos next week.",
 ];
 
 export default function Campaign() {
