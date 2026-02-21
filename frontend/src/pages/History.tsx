@@ -1,10 +1,37 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { History, ExternalLink, Search, Filter, Trash2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  History, ExternalLink, Search, Trash2, AlertCircle,
+  Plus, Calendar, Tag, Zap, TrendingUp, X, ChevronRight
+} from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiClient, ExecutionHistory } from '../lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
+/* ─── helpers ─────────────────────────────────────────────── */
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = diffHours / 24;
+  if (diffHours < 1) return 'Just now';
+  if (diffHours < 24) return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  if (diffDays < 2) return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const URGENCY_STYLES: Record<string, string> = {
+  high: 'bg-red-50 text-red-700 border-red-200',
+  medium: 'bg-amber-50 text-amber-700 border-amber-200',
+  low: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+};
+
+const URGENCY_DOT: Record<string, string> = {
+  high: 'bg-red-500', medium: 'bg-amber-500', low: 'bg-emerald-500',
+};
+
+/* ─── item type ──────────────────────────────────────────── */
 interface CampaignHistoryItem {
   id: string;
   prompt: string;
@@ -16,42 +43,29 @@ interface CampaignHistoryItem {
   urgencyLevel: string;
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = diffHours / 24;
-
-  if (diffHours < 1) return 'Just now';
-  if (diffHours < 24) return `Today, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  if (diffDays < 2) return `Yesterday, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
+/* ─── page ───────────────────────────────────────────────── */
 export default function HistoryPage() {
   const navigate = useNavigate();
   const { userRole } = useAuth();
   const [campaigns, setCampaigns] = useState<CampaignHistoryItem[]>([]);
   const [search, setSearch] = useState('');
+  const [urgencyFilter, setUrgencyFilter] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Check if user can delete (user or admin)
   const canDelete = userRole === 'admin' || userRole === 'user';
   const canCreateCampaign = userRole === 'admin' || userRole === 'user';
 
   useEffect(() => {
-    const fetchHistory = async () => {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
         const data = await ApiClient.getExecutionHistory(50, 0);
-        
-        const mapped: CampaignHistoryItem[] = data.map((item: ExecutionHistory) => ({
+        setCampaigns(data.map((item: ExecutionHistory) => ({
           id: item.id,
           prompt: item.business_behavior || item.user_intent || 'Unknown campaign',
           createdAt: item.created_at,
@@ -59,253 +73,353 @@ export default function HistoryPage() {
           confidence: item.confidence,
           tone: item.tone || 'N/A',
           ctaType: item.cta_type || 'N/A',
-          urgencyLevel: item.urgency_level || 'N/A',
-        }));
-        
-        setCampaigns(mapped);
-      } catch (err) {
-        console.error('Failed to fetch execution history:', err);
+          urgencyLevel: item.urgency_level || 'medium',
+        })));
+      } catch {
         setError('Failed to load campaign history. Make sure the backend is running.');
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchHistory();
+    })();
   }, []);
-
-  const handleDeleteClick = (id: string) => {
-    setDeleteConfirmId(id);
-  };
 
   const handleDeleteConfirm = async () => {
     if (!deleteConfirmId) return;
-
     setDeleting(true);
     try {
       await ApiClient.deleteExecution(deleteConfirmId);
-      
-      // Remove from UI
-      const updated = campaigns.filter(c => c.id !== deleteConfirmId);
-      setCampaigns(updated);
-      
-      // Show success message
-      setSuccessMessage('Successfully deleted');
-      setTimeout(() => setSuccessMessage(null), 3000);
-      
+      setCampaigns((p) => p.filter((c) => c.id !== deleteConfirmId));
+      setSuccessMsg('Campaign deleted successfully');
+      setTimeout(() => setSuccessMsg(null), 3000);
       setDeleteConfirmId(null);
-    } catch (err) {
-      console.error('Failed to delete execution:', err);
-      setError('Failed to delete campaign. Please try again.');
+    } catch {
+      setError('Failed to delete campaign.');
       setTimeout(() => setError(null), 3000);
     } finally {
       setDeleting(false);
     }
   };
 
-  const handleDeleteCancel = () => {
-    setDeleteConfirmId(null);
-  };
+  const filtered = useMemo(() =>
+    campaigns.filter((c) => {
+      const matchSearch = !search || [c.prompt, c.category, c.tone].some((v) =>
+        v.toLowerCase().includes(search.toLowerCase())
+      );
+      const matchUrgency = !urgencyFilter || c.urgencyLevel === urgencyFilter;
+      return matchSearch && matchUrgency;
+    }), [campaigns, search, urgencyFilter]);
 
-  const filtered = campaigns.filter(c =>
-    c.prompt.toLowerCase().includes(search.toLowerCase()) ||
-    c.category.toLowerCase().includes(search.toLowerCase()) ||
-    c.tone.toLowerCase().includes(search.toLowerCase())
-  );
+  /* stats */
+  const stats = useMemo(() => ({
+    total: campaigns.length,
+    avgConf: campaigns.length > 0
+      ? Math.round(campaigns.reduce((a, c) => a + c.confidence, 0) / campaigns.length * 100) : 0,
+    highUrgency: campaigns.filter((c) => c.urgencyLevel === 'high').length,
+  }), [campaigns]);
 
   return (
-    <div className="min-h-full gradient-bg">
-      {/* Success Toast */}
-      {successMessage && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50">
+    <div className="min-h-full bg-slate-50">
+      {/* ── Success toast ── */}
+      <AnimatePresence>
+        {successMsg && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -24 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3"
+            exit={{ opacity: 0, y: -24 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white px-6 py-3 rounded-xl shadow-xl flex items-center gap-2 text-sm font-semibold"
           >
-            <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-              <span className="text-white font-bold">✓</span>
-            </div>
-            <p className="font-medium">{successMessage}</p>
+            <span className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center text-xs">✓</span>
+            {successMsg}
           </motion.div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center">
-              <History className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">Campaign History</h1>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        {/* ── Header ── */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+          className="flex items-center justify-between mb-8"
+        >
+          <div>
+            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Campaign History</h1>
+            <p className="text-slate-500 text-sm mt-0.5">View and manage your past AI-generated campaigns</p>
           </div>
-          <p className="text-muted-foreground">View and manage your past AI-generated campaigns</p>
+          {canCreateCampaign && (
+            <Link
+              to="/campaign"
+              className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl shadow-md hover:shadow-lg transition-all"
+            >
+              <Plus size={15} /> New Campaign
+            </Link>
+          )}
         </motion.div>
 
-        {/* Search + filter */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        {/* ── Stat cards ── */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Total Campaigns', value: stats.total, icon: History, gradient: 'bg-gradient-to-br from-indigo-500 to-violet-600' },
+            { label: 'Avg ICP Confidence', value: `${stats.avgConf}%`, icon: TrendingUp, gradient: 'bg-gradient-to-br from-emerald-500 to-teal-600' },
+            { label: 'High Urgency', value: stats.highUrgency, icon: Zap, gradient: 'bg-gradient-to-br from-red-500 to-rose-600' },
+          ].map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.07 }}
+                className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-md ${s.gradient}`}
+              >
+                <div className="absolute -right-4 -top-4 w-24 h-24 rounded-full bg-white/10 blur-xl" />
+                <div className="flex items-start justify-between relative z-10">
+                  <div>
+                    <p className="text-white/70 text-xs font-medium mb-1">{s.label}</p>
+                    <p className="text-3xl font-extrabold">{s.value}</p>
+                  </div>
+                  <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Icon size={18} className="text-white" />
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* ── Search + Urgency filter ── */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}
+          className="flex items-center gap-3 mb-5 flex-wrap"
+        >
+          <div className="relative flex-1 min-w-52">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search campaigns..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by prompt, category, or tone…"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm transition-all"
             />
-          </div>
-        </motion.div>
-
-        {/* Stats row */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}
-          className="grid grid-cols-3 gap-3 mb-6">
-          {[
-            { label: 'Total Campaigns', value: campaigns.length, icon: '📊' },
-            { label: 'Avg Confidence', value: campaigns.length > 0 ? `${Math.round(campaigns.reduce((a, c) => a + c.confidence, 0) / campaigns.length * 100)}%` : '0%', icon: '🎯' },
-            { label: 'Categories', value: new Set(campaigns.map(c => c.category)).size, icon: '🏷️' },
-          ].map((stat, i) => (
-            <div key={i} className="card-glass rounded-xl p-4 text-center">
-              <div className="text-2xl mb-1">{stat.icon}</div>
-              <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{stat.label}</div>
-            </div>
-          ))}
-        </motion.div>
-
-        {/* Loading state */}
-        {loading && (
-          <div className="text-center py-16">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground mt-4">Loading campaign history...</p>
-          </div>
-        )}
-
-        {/* Loading state */}
-        {loading && (
-          <div className="text-center py-16">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground mt-4">Loading campaign history...</p>
-          </div>
-        )}
-
-        {/* Error state */}
-        {error && (
-          <div className="card-glass rounded-xl p-6 border border-destructive/20 bg-destructive/5">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-destructive mb-1">Error Loading History</h3>
-                <p className="text-sm text-muted-foreground">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Campaign list */}
-        {!loading && !error && (
-          <div className="space-y-3">
-            {filtered.length === 0 ? (
-              <div className="text-center py-16 text-muted-foreground">
-                <History className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">No campaigns found</p>
-                {canCreateCampaign && (
-                  <p className="text-sm mt-1">Try a different search or <Link to="/campaign" className="text-primary hover:underline">create a new campaign</Link></p>
-                )}
-              </div>
-            ) : (
-              filtered.map((campaign, i) => (
-                <motion.div
-                  key={campaign.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 + i * 0.06 }}
-                  className="card-glass rounded-xl p-4 group hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => navigate(`/history/${campaign.id}`)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground mb-1.5 flex items-center gap-1">
-                        🕐 {formatDate(campaign.createdAt)}
-                      </p>
-                      <p className="text-sm font-medium text-foreground leading-relaxed mb-2 line-clamp-2">
-                        "{campaign.prompt}"
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="text-xs bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full">{campaign.category}</span>
-                        <span className="text-xs bg-primary/10 text-primary px-2.5 py-0.5 rounded-full">🎯 {Math.round(campaign.confidence * 100)}% confident</span>
-                        <span className="text-xs bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full">Tone: {campaign.tone}</span>
-                        <span className="text-xs bg-muted text-muted-foreground px-2.5 py-0.5 rounded-full">CTA: {campaign.ctaType}</span>
-                      </div>
-                    </div>
-                    {canDelete && (
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteClick(campaign.id);
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              ))
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
+                <X size={14} />
+              </button>
             )}
           </div>
+
+          {/* Urgency filter chips */}
+          <div className="flex items-center gap-2">
+            {[null, 'high', 'medium', 'low'].map((u) => (
+              <button
+                key={u ?? 'all'}
+                onClick={() => setUrgencyFilter(u)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${urgencyFilter === u
+                    ? u === 'high' ? 'bg-red-600 border-red-600 text-white' :
+                      u === 'medium' ? 'bg-amber-500 border-amber-500 text-white' :
+                        u === 'low' ? 'bg-emerald-600 border-emerald-600 text-white' :
+                          'bg-indigo-600 border-indigo-600 text-white'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                  }`}
+              >
+                {u ? u.charAt(0).toUpperCase() + u.slice(1) : 'All'}
+              </button>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* ── Loading ── */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-slate-500 text-sm">Loading campaign history…</p>
+          </div>
         )}
 
-        {!loading && !error && filtered.length > 0 && canCreateCampaign && (
-          <div className="text-center mt-8">
-            <Link to="/campaign" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold">
-              + New Campaign
-            </Link>
+        {/* ── Error ── */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex items-start gap-3 mb-5">
+            <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-red-700 text-sm">Error loading history</p>
+              <p className="text-red-600 text-xs mt-0.5">{error}</p>
+            </div>
           </div>
+        )}
+
+        {/* ── Campaign list ── */}
+        {!loading && !error && (
+          <>
+            {filtered.length === 0 ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center py-24 text-center">
+                <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                  <History size={28} className="text-slate-400" />
+                </div>
+                <p className="font-semibold text-slate-700 mb-1">No campaigns found</p>
+                <p className="text-slate-400 text-sm">
+                  {search || urgencyFilter ? 'Try adjusting your search or filters' : 'You haven\'t run any campaigns yet'}
+                </p>
+                {canCreateCampaign && !search && !urgencyFilter && (
+                  <Link to="/campaign" className="mt-4 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-4 py-2.5 rounded-xl transition-all">
+                    <Plus size={14} /> Create your first campaign
+                  </Link>
+                )}
+              </motion.div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                {/* Table header */}
+                <div className="grid grid-cols-12 gap-4 px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  <div className="col-span-5">Campaign</div>
+                  <div className="col-span-2">Category</div>
+                  <div className="col-span-1 text-center">Confidence</div>
+                  <div className="col-span-2">Urgency</div>
+                  <div className="col-span-1">Date</div>
+                  <div className="col-span-1" />
+                </div>
+
+                <div className="divide-y divide-slate-50">
+                  <AnimatePresence>
+                    {filtered.map((c, i) => (
+                      <motion.div
+                        key={c.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                        transition={{ delay: i * 0.04 }}
+                        className="grid grid-cols-12 gap-4 px-5 py-4 hover:bg-slate-50 transition-colors cursor-pointer group items-center"
+                        onClick={() => navigate(`/history/${c.id}`)}
+                      >
+                        {/* Prompt */}
+                        <div className="col-span-5 min-w-0">
+                          <p className="text-sm font-semibold text-slate-800 line-clamp-1 group-hover:text-indigo-700 transition-colors">
+                            {c.prompt}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                            <Tag size={10} /> Tone: {c.tone} &nbsp;·&nbsp; CTA: {c.ctaType}
+                          </p>
+                        </div>
+
+                        {/* Category */}
+                        <div className="col-span-2">
+                          <span className="inline-flex items-center gap-1 text-xs font-medium text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg truncate max-w-full">
+                            {c.category.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                          </span>
+                        </div>
+
+                        {/* Confidence */}
+                        <div className="col-span-1 flex flex-col items-center gap-1">
+                          <span className={`text-xs font-bold ${c.confidence >= 0.8 ? 'text-emerald-600' :
+                              c.confidence >= 0.6 ? 'text-amber-600' : 'text-red-600'
+                            }`}>
+                            {Math.round(c.confidence * 100)}%
+                          </span>
+                          <div className="w-10 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${c.confidence >= 0.8 ? 'bg-emerald-500' :
+                                  c.confidence >= 0.6 ? 'bg-amber-500' : 'bg-red-500'
+                                }`}
+                              style={{ width: `${c.confidence * 100}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Urgency */}
+                        <div className="col-span-2">
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold border px-2.5 py-1 rounded-lg capitalize ${URGENCY_STYLES[c.urgencyLevel] ?? 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${URGENCY_DOT[c.urgencyLevel] ?? 'bg-slate-400'}`} />
+                            {c.urgencyLevel}
+                          </span>
+                        </div>
+
+                        {/* Date */}
+                        <div className="col-span-1">
+                          <p className="text-xs text-slate-400 flex items-center gap-1 whitespace-nowrap">
+                            <Calendar size={10} />
+                            {formatDate(c.createdAt)}
+                          </p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="col-span-1 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/history/${c.id}`); }}
+                            className="p-1.5 rounded-lg hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                            title="View details"
+                          >
+                            <ExternalLink size={14} />
+                          </button>
+                          {canDelete && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(c.id); }}
+                              className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                          <ChevronRight size={14} className="text-slate-300" />
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+
+                {/* Table footer */}
+                <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
+                  Showing {filtered.length} of {campaigns.length} campaigns
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      {deleteConfirmId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      {/* ── Delete confirmation ── */}
+      <AnimatePresence>
+        {deleteConfirmId && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6"
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
           >
-            <h3 className="text-xl font-bold text-gray-900 mb-2">Delete this record?</h3>
-            <p className="text-gray-600 mb-6">
-              This will permanently delete the campaign execution and all associated data. This action cannot be undone.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleDeleteCancel}
-                disabled={deleting}
-                className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteConfirm}
-                disabled={deleting}
-                className="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {deleting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Deleting...
-                  </>
-                ) : (
-                  'Confirm'
-                )}
-              </button>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-7"
+            >
+              <div className="w-12 h-12 rounded-xl bg-red-50 flex items-center justify-center mb-4">
+                <Trash2 size={20} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Delete this campaign?</h3>
+              <p className="text-slate-500 text-sm mb-6">
+                This will permanently delete the campaign execution and all associated data. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirmId(null)}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteConfirm}
+                  disabled={deleting}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {deleting ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting…</>
+                  ) : (
+                    <><Trash2 size={14} /> Delete</>
+                  )}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
