@@ -4,7 +4,7 @@ import {
   Dialog,
   DialogContent,
 } from "@/components/ui/dialog";
-import { Shield, User, Eye, Bot, ArrowRight, Mail, Lock, UserPlus } from "lucide-react";
+import { Shield, User, Eye, ArrowRight, Mail, Lock, UserPlus } from "lucide-react";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -74,10 +74,8 @@ const LoginModal = ({ open, onClose, defaultTab = "login" }: LoginModalProps) =>
         {/* Header */}
         <div className="bg-indigo-600 px-8 pt-8 pb-7">
           <div className="flex items-center gap-2.5 mb-6">
-            <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center">
-              <Bot size={16} className="text-white" />
-            </div>
-            <span className="font-bold text-white text-sm tracking-tight">MarketAgent</span>
+            <img src="/logo.png" alt="Infynd Aurevix" className="w-8 h-8 rounded-lg object-cover" />
+            <span className="font-bold text-white text-sm tracking-tight">Infynd Aurevix</span>
           </div>
           <h2 className="text-2xl font-extrabold text-white tracking-tight">
             {tab === "login" ? "Welcome back" : "Create your account"}
@@ -120,8 +118,8 @@ const LoginModal = ({ open, onClose, defaultTab = "login" }: LoginModalProps) =>
                     key={r.id}
                     onClick={() => setSelectedRole(r.id)}
                     className={`flex flex-col items-center gap-1.5 px-2 py-3.5 rounded-xl border-2 transition-all duration-150 ${active
-                        ? "border-indigo-600 bg-indigo-50 shadow-sm"
-                        : "border-slate-100 bg-slate-50 hover:border-slate-200 hover:bg-white"
+                      ? "border-indigo-600 bg-indigo-50 shadow-sm"
+                      : "border-slate-100 bg-slate-50 hover:border-slate-200 hover:bg-white"
                       }`}
                   >
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? "bg-indigo-600" : "bg-slate-200"}`}>
@@ -189,8 +187,8 @@ const LoginModal = ({ open, onClose, defaultTab = "login" }: LoginModalProps) =>
             onClick={handleSubmit}
             disabled={!selectedRole}
             className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all ${selectedRole
-                ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg"
-                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+              ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg"
+              : "bg-slate-100 text-slate-400 cursor-not-allowed"
               }`}
           >
             {tab === "login" ? "Sign In" : "Create Account"}

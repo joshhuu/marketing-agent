@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Shield, BarChart, Users, Zap, Lock, FileText, ArrowRight, CheckCircle, Bot, Target, Sparkles } from "lucide-react";
+import { Shield, BarChart, Users, Zap, Lock, FileText, ArrowRight, CheckCircle, Target, Sparkles } from "lucide-react";
 import LoginModal from "@/components/LoginModal";
 
 const LandingPage = () => {
@@ -20,7 +20,7 @@ const LandingPage = () => {
 
   const features = [
     {
-      icon: Bot,
+      icon: Zap,
       color: "bg-indigo-600",
       title: "AI Agent Orchestration",
       desc: "Multi-agent workflows handle classification, strategy, and personalized content generation end-to-end.",
@@ -76,10 +76,8 @@ const LandingPage = () => {
       <header className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${scrolled ? "bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100" : "bg-transparent"}`}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm">
-              <Bot size={17} className="text-white" />
-            </div>
-            <span className="font-bold text-slate-900 text-lg tracking-tight">MarketAgent</span>
+            <img src="/logo.png" alt="Infynd Aurevix" className="w-8 h-8 rounded-lg object-cover" />
+            <span className="font-bold text-slate-900 text-lg tracking-tight">Infynd Aurevix</span>
           </div>
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-500">
             <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
@@ -226,10 +224,8 @@ const LandingPage = () => {
       <footer className="bg-slate-900 py-10 px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600 flex items-center justify-center">
-              <Bot size={14} className="text-white" />
-            </div>
-            <span className="font-bold text-white text-sm tracking-tight">MarketAgent</span>
+            <img src="/logo.png" alt="Infynd Aurevix" className="w-7 h-7 rounded-lg object-cover" />
+            <span className="font-bold text-white text-sm tracking-tight">Infynd Aurevix</span>
           </div>
           <div className="flex items-center gap-1.5 text-slate-500 text-xs">
             <CheckCircle size={12} className="text-green-500" />
