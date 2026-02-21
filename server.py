@@ -465,6 +465,7 @@ async def stream_agent_execution(
         from nodes.platform_decision import decide_platform
         from nodes.content_generator import generate_content
         from nodes.email_sender import send_emails
+        from nodes.call_sender import make_calls
         
         # Agent 1: Input Parser
         state = parse_input(initial_state)
@@ -579,11 +580,29 @@ async def stream_agent_execution(
             }
             
             yield f"data: {json.dumps({'stage': 'email_sender', 'status': 'completed', 'data': send_summary, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        
+        # Agent 7b: Call Sender (only if channel is call)
+        elif selected_channel == 'call':
+            yield f"data: {json.dumps({'stage': 'call_sender', 'status': 'started', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            state = make_calls(state)
+            
+            call_results = state.get('call_send_results', [])
+            calls_made_count = state.get('calls_made_count', 0)
+            call_error = state.get('call_error')
+            
+            call_summary = {
+                'calls_made': calls_made_count,
+                'results': call_results,
+                'error': call_error
+            }
+            
+            yield f"data: {json.dumps({'stage': 'call_sender', 'status': 'completed', 'data': call_summary, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        
         else:
-            yield f"data: {json.dumps({'stage': 'email_sender', 'status': 'skipped', 'reason': f'Channel is {selected_channel}, not email', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+            yield f"data: {json.dumps({'stage': 'outreach', 'status': 'skipped', 'reason': f'Channel is {selected_channel}, no automated sending', 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
         # Final completion
-        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'classification_id': classification_id, 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', [])), 'emails_sent': state.get('emails_sent_count', 0)}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
+        yield f"data: {json.dumps({'stage': 'complete', 'status': 'Campaign execution successful', 'classification_id': classification_id, 'final_state': {'category': state.get('category'), 'target_archetype': state.get('target_archetype'), 'selected_channel': state.get('selected_channel'), 'prospect_count': len(state.get('top_prospects', [])), 'emails_sent': state.get('emails_sent_count', 0), 'calls_made': state.get('calls_made_count', 0)}, 'timestamp': datetime.utcnow().isoformat()})}\n\n"
         
         # Cleanup
         await session_manager.cleanup_session(session_id)
@@ -1966,6 +1985,161 @@ async def health_check():
         "service": "multi-agent-marketing-api",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# ========================================
+# TWILIO CALL WEBHOOK ENDPOINTS
+# ========================================
+
+@app.post("/api/twilio/voice")
+async def twilio_voice_webhook(request: Request):
+    """
+    Initial webhook when Twilio call connects.
+    Speaks the opener and starts listening for the prospect's response.
+    """
+    from utils.call_conversation import get_call_context, get_opener_text
+    
+    form_data = await request.form()
+    call_sid = form_data.get("CallSid", "")
+    
+    logger.info(f"Twilio voice webhook called for SID: {call_sid}")
+    
+    context = get_call_context(call_sid)
+    
+    if not context:
+        # No context registered - just say a generic message
+        twiml = '<Response><Say voice="alice">Sorry, there was an error setting up this call. Goodbye.</Say></Response>'
+        return Response(content=twiml, media_type="application/xml")
+    
+    # Get the opener text
+    opener = get_opener_text(call_sid)
+    
+    # Build TwiML: Say the opener, then Gather (listen for response)
+    webhook_base = _get_webhook_base_url()
+    gather_url = f"{webhook_base}/api/twilio/respond"
+    
+    twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="en-US">{_escape_twiml(opener)}</Say>
+    <Gather input="speech" action="{gather_url}" method="POST" 
+            speechTimeout="3" timeout="10" language="en-US">
+        <Say voice="alice">.</Say>
+    </Gather>
+    <Say voice="alice">I didn't catch that. Thank you for your time. Goodbye!</Say>
+</Response>'''
+    
+    logger.info(f"Call {call_sid} - Speaking opener and waiting for response")
+    return Response(content=twiml, media_type="application/xml")
+
+
+@app.post("/api/twilio/respond")
+async def twilio_respond_webhook(request: Request):
+    """
+    Webhook called when Twilio captures the prospect's speech.
+    Sends transcription to Gemini, gets AI response, speaks it back.
+    """
+    from utils.call_conversation import generate_ai_response, should_continue, cleanup_call, get_call_context
+    
+    form_data = await request.form()
+    call_sid = form_data.get("CallSid", "")
+    speech_result = form_data.get("SpeechResult", "")
+    
+    logger.info(f"Twilio respond webhook - SID: {call_sid}")
+    logger.info(f"  Prospect said: {speech_result}")
+    
+    if not speech_result:
+        # No speech detected - ask again or wrap up
+        context = get_call_context(call_sid)
+        if not context:
+            twiml = '<Response><Say voice="alice">Thank you for your time. Goodbye!</Say><Hangup/></Response>'
+            return Response(content=twiml, media_type="application/xml")
+        
+        webhook_base = _get_webhook_base_url()
+        gather_url = f"{webhook_base}/api/twilio/respond"
+        
+        twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice">Are you still there?</Say>
+    <Gather input="speech" action="{gather_url}" method="POST"
+            speechTimeout="3" timeout="8" language="en-US">
+        <Say voice="alice">.</Say>
+    </Gather>
+    <Say voice="alice">It seems like you might be busy. I'll follow up over email. Thank you!</Say>
+    <Hangup/>
+</Response>'''
+        return Response(content=twiml, media_type="application/xml")
+    
+    # Generate AI response using Gemini
+    ai_response = generate_ai_response(call_sid, speech_result)
+    
+    # Check if we should continue the conversation
+    if should_continue(call_sid):
+        # Continue conversation: speak response + listen again
+        webhook_base = _get_webhook_base_url()
+        gather_url = f"{webhook_base}/api/twilio/respond"
+        
+        twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="en-US">{_escape_twiml(ai_response)}</Say>
+    <Gather input="speech" action="{gather_url}" method="POST"
+            speechTimeout="3" timeout="10" language="en-US">
+        <Say voice="alice">.</Say>
+    </Gather>
+    <Say voice="alice">Thank you so much for your time today. Have a great day!</Say>
+</Response>'''
+    else:
+        # Final turn - speak response and hang up
+        twiml = f'''<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="alice" language="en-US">{_escape_twiml(ai_response)}</Say>
+    <Say voice="alice">Thank you for your time. Have a wonderful day!</Say>
+    <Hangup/>
+</Response>'''
+        # Clean up the call context
+        cleanup_call(call_sid)
+    
+    return Response(content=twiml, media_type="application/xml")
+
+
+@app.post("/api/twilio/status")
+async def twilio_status_webhook(request: Request):
+    """
+    Webhook for call status updates (completed, failed, etc.)
+    Cleans up call context when call ends.
+    """
+    from utils.call_conversation import cleanup_call
+    
+    form_data = await request.form()
+    call_sid = form_data.get("CallSid", "")
+    call_status = form_data.get("CallStatus", "")
+    
+    logger.info(f"Call status update - SID: {call_sid}, Status: {call_status}")
+    
+    if call_status in ["completed", "failed", "busy", "no-answer", "canceled"]:
+        cleanup_call(call_sid)
+    
+    return {"status": "ok"}
+
+
+def _escape_twiml(text: str) -> str:
+    """Escape special XML characters for TwiML"""
+    return (
+        text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+def _get_webhook_base_url() -> str:
+    """Get the webhook base URL for Twilio callbacks"""
+    from config import TWILIO_WEBHOOK_BASE_URL
+    if TWILIO_WEBHOOK_BASE_URL:
+        return TWILIO_WEBHOOK_BASE_URL.rstrip("/")
+    # Fallback - won't work for Twilio but useful for local testing
+    return "http://localhost:8000"
 
 
 # ========================================

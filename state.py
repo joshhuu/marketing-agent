@@ -51,6 +51,11 @@ class AgentState(TypedDict):
     send_error: Optional[str]  # Error message if sending failed
     classification_id: Optional[str]  # ID for tracking in sent_emails table
     
+    # Agent 6 (Call Sender) outputs
+    call_send_results: Optional[List[Dict[str, Any]]]  # Results for each call
+    calls_made_count: Optional[int]  # Number of calls successfully initiated
+    call_error: Optional[str]  # Error message if calling failed
+    
     # Legacy fields (for backward compatibility)
     linkedin_message: Optional[str]
     email_message: Optional[Dict[str, str]]  # {subject: str, body: str}

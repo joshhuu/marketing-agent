@@ -1,8 +1,12 @@
+:root{--brand:#0f172a;--muted:#6b7280;--card:#ffffff}
+
 #root {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
-  text-align: center;
+  text-align: left;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  color: var(--brand);
 }
 
 .logo {
@@ -33,10 +37,9 @@
   }
 }
 
-.card {
-  padding: 2em;
-}
+.card { padding: 2em; background: var(--card); border-radius: 12px; box-shadow: 0 6px 18px rgba(15,23,42,0.08) }
 
-.read-the-docs {
-  color: #888;
-}
+.read-the-docs { color: var(--muted) }
+
+/* Small utility for subtle headings */
+.muted { color: var(--muted) }

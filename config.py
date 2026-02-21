@@ -34,6 +34,18 @@ HARDCODED_TEST_EMAILS = [
     "teamcollabcore@gmail.com"
 ]
 
+# Twilio Configuration
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+TWILIO_WEBHOOK_BASE_URL = os.getenv("TWILIO_WEBHOOK_BASE_URL", "")  # ngrok URL for Twilio webhooks
+
+# Hardcoded test phone recipients
+# All calls will be made ONLY to these numbers for testing
+HARDCODED_TEST_PHONES = [
+    "+916383807593",
+]
+
 # Model Configuration
 MODEL_NAME = "gemma-3-27b-it"
 

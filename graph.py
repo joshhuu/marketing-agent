@@ -15,6 +15,7 @@ from nodes.engagement_analyzer import analyze_engagement
 from nodes.platform_decision import decide_platform
 from nodes.content_generator import generate_content
 from nodes.email_sender import send_emails
+from nodes.call_sender import make_calls
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -49,23 +50,27 @@ def should_proceed_after_engagement(state: AgentState) -> str:
     return "platform_decision"
 
 
-def should_send_emails(state: AgentState) -> str:
+def should_send_after_content(state: AgentState) -> str:
     """
     Conditional routing after content generation
     
-    Only send emails if the selected channel is email.
+    Routes to the appropriate sender based on selected channel.
     
     Returns:
         "email_sender" if channel is email
-        "END" for other channels
+        "call_sender" if channel is call
+        "END" for other channels (e.g. linkedin)
     """
     selected_channel = state.get("selected_channel", "email")
     
     if selected_channel == "email":
         logger.info("Channel is email - proceeding to email sender")
         return "email_sender"
+    elif selected_channel == "call":
+        logger.info("Channel is call - proceeding to call sender")
+        return "call_sender"
     else:
-        logger.info(f"Channel is {selected_channel} - skipping email sending")
+        logger.info(f"Channel is {selected_channel} - no automated sending")
         return "END"
 
 
@@ -83,13 +88,15 @@ def build_graph():
         -> (conditional check)
         -> platform_decision 
         -> content_generator 
-        -> (conditional check - is email?)
+        -> (conditional check - is email/call?)
         -> email_sender (if email)
+        -> call_sender (if call)
         -> END
     
     IMPROVEMENTS:
     - Added engagement_analyzer to prevent over-contacting prospects
     - Added email_sender to send emails directly to hardcoded test addresses
+    - Added call_sender to make calls via Twilio to hardcoded test numbers
     - Added conditional routing to handle different channels
     
     Returns:
@@ -109,6 +116,7 @@ def build_graph():
     graph.add_node("platform_decision", decide_platform)
     graph.add_node("content_generator", generate_content)
     graph.add_node("email_sender", send_emails)
+    graph.add_node("call_sender", make_calls)
     
     # Add edges (define sequential flow with conditional routing)
     graph.add_edge("input_parser", "classifier")
@@ -131,12 +139,13 @@ def build_graph():
     graph.add_edge("platform_decision", "content_generator")
     
     # Conditional routing after content generation
-    # Only send emails if channel is email
+    # Route to email_sender, call_sender, or END based on channel
     graph.add_conditional_edges(
         "content_generator",
-        should_send_emails,
+        should_send_after_content,
         {
             "email_sender": "email_sender",
+            "call_sender": "call_sender",
             "END": END
         }
     )
@@ -144,10 +153,13 @@ def build_graph():
     # Email sender goes to END
     graph.add_edge("email_sender", END)
     
+    # Call sender goes to END
+    graph.add_edge("call_sender", END)
+    
     # Set entry point
     graph.set_entry_point("input_parser")
     
-    logger.info("Graph construction complete with email sending")
+    logger.info("Graph construction complete with email and call sending")
     
     # Compile and return
     return graph.compile()

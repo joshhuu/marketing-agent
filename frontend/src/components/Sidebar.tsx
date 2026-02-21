@@ -39,11 +39,11 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
             <Link to="/" className="flex items-center gap-2.5 group">
               <img 
                 src="/logo.png" 
-                alt="Indynd Aurevix Logo" 
+                alt="Infynd Aurevix Logo" 
                 className="w-8 h-8 rounded-lg object-contain group-hover:scale-105 transition-transform duration-300"
               />
               <span className="font-bold text-foreground tracking-tight">
-                Indynd <span className="text-gradient">Aurevix</span>
+                Infynd <span className="text-gradient">Aurevix</span>
               </span>
             </Link>
           )}
@@ -51,7 +51,7 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
             <Link to="/" className="flex items-center justify-center w-full group">
               <img 
                 src="/logo.png" 
-                alt="Indynd Aurevix Logo" 
+                alt="Infynd Aurevix Logo" 
                 className="w-8 h-8 rounded-lg object-contain group-hover:scale-105 transition-transform duration-300"
               />
             </Link>

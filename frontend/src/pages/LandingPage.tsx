@@ -7,117 +7,107 @@ const LandingPage = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      {/* Hero Section */}
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
-          <h1 className="text-6xl font-bold text-white mb-6">
-            AI-Powered Marketing <span className="text-purple-400">Intelligence</span>
-          </h1>
-          <p className="text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
-            Enterprise-grade multi-agent marketing system that automates B2B campaign creation
-            with intelligent prospect matching, content generation, and compliance built-in.
-          </p>
-          <Button
-            onClick={() => setShowLoginModal(true)}
-            size="lg"
-            className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg"
-          >
-            Get Started Now
-          </Button>
-        </div>
+    <div className="min-h-screen bg-gray-50 text-slate-800">
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        {/* Hero Section */}
+        <section className="py-12">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <h1 className="text-4xl font-extrabold leading-tight text-slate-900 mb-4">
+                AI-powered Marketing Intelligence
+              </h1>
+              <p className="text-lg text-slate-600 mb-6 max-w-2xl">
+                Enterprise-grade multi-agent platform to design, match, and deliver
+                personalized B2B campaigns — with auditability and compliance built-in.
+              </p>
+              <div className="flex gap-4">
+                <Button
+                  onClick={() => setShowLoginModal(true)}
+                  size="lg"
+                  className="bg-slate-900 text-white px-6 py-3 shadow-md hover:shadow-lg"
+                >
+                  Get Started
+                </Button>
+                <Button variant="outline" onClick={() => window.scrollTo({ top: 800, behavior: 'smooth' })} className="px-6 py-3">
+                  Learn More
+                </Button>
+              </div>
+            </div>
+
+            <div className="hidden lg:block">
+              <div className="bg-white rounded-xl shadow-lg p-8">
+                <h3 className="text-sm font-semibold text-slate-500 mb-4">Product Snapshot</h3>
+                <ul className="space-y-3 text-sm text-slate-700">
+                  <li>• Multi-agent orchestration for campaign automation</li>
+                  <li>• Precision prospect matching with engagement signals</li>
+                  <li>• Built-in audit trails and role-based access</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
 
         {/* Features Grid */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
-          {/* Feature 1 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center mb-4">
-              <Zap className="text-white" size={24} />
+        <section className="py-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
+                <Zap className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">AI Agent Workflow</h3>
+              <p className="text-slate-600 text-sm">Orchestrate agents for classification, strategy, and content generation.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">AI Agent Workflow</h3>
-            <p className="text-gray-300">
-              6-agent system that parses intent, classifies tasks, generates strategy,
-              matches prospects, selects channels, and creates personalized content.
-            </p>
-          </div>
 
-          {/* Feature 2 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
-              <Users className="text-white" size={24} />
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center mb-4">
+                <Users className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Smart ICP Matching</h3>
+              <p className="text-slate-600 text-sm">Intelligent prospect scoring to target your ideal customer profile.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Smart ICP Matching</h3>
-            <p className="text-gray-300">
-              Intelligent prospect scoring based on industry, seniority, engagement history,
-              and behavioral signals to target your ideal customer profile.
-            </p>
-          </div>
 
-          {/* Feature 3 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center mb-4">
-              <BarChart className="text-white" size={24} />
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center mb-4">
+                <BarChart className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Real-Time Analytics</h3>
+              <p className="text-slate-600 text-sm">Track campaign performance and engagement across channels.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Real-Time Analytics</h3>
-            <p className="text-gray-300">
-              Track campaign performance, prospect engagement, and API usage with
-              comprehensive dashboards and detailed audit trails.
-            </p>
-          </div>
 
-          {/* Feature 4 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center mb-4">
-              <Shield className="text-white" size={24} />
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-red-600 rounded-lg flex items-center justify-center mb-4">
+                <Shield className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Role-Based Access</h3>
+              <p className="text-slate-600 text-sm">Fine-grained permissions for Viewers, Users, and Admins.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Role-Based Access Control</h3>
-            <p className="text-gray-300">
-              Three-tier permission system: Viewers (read-only), Users (campaign creation),
-              and Admins (full analytics and system monitoring).
-            </p>
-          </div>
 
-          {/* Feature 5 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center mb-4">
-              <Lock className="text-white" size={24} />
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-yellow-600 rounded-lg flex items-center justify-center mb-4">
+                <Lock className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Security & Compliance</h3>
+              <p className="text-slate-600 text-sm">Encryption, audit logs, and enterprise-ready controls.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Security & Compliance</h3>
-            <p className="text-gray-300">
-              Encrypted data storage, complete audit logging, prompt tracking, and
-              compliance-ready architecture for enterprise security standards.
-            </p>
-          </div>
 
-          {/* Feature 6 */}
-          <div className="bg-white/10 backdrop-blur-lg rounded-lg p-6 border border-white/20">
-            <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
-              <FileText className="text-white" size={24} />
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center mb-4">
+                <FileText className="text-white" size={20} />
+              </div>
+              <h3 className="text-xl font-semibold text-slate-900 mb-2">Human-in-the-Loop</h3>
+              <p className="text-slate-600 text-sm">Review and approve prospects before content generation.</p>
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Human-in-the-Loop</h3>
-            <p className="text-gray-300">
-              Review and approve prospects before content generation. Full control
-              with AI-powered recommendations for optimal campaign performance.
-            </p>
           </div>
-        </div>
+        </section>
 
         {/* CTA Section */}
-        <div className="text-center bg-white/5 backdrop-blur-lg rounded-lg p-12 border border-white/20">
-          <h2 className="text-4xl font-bold text-white mb-4">
-            Ready to Transform Your Marketing?
-          </h2>
-          <p className="text-xl text-gray-300 mb-8">
-            Join leading B2B companies using AI to scale their outreach
-          </p>
-          <Button
-            onClick={() => setShowLoginModal(true)}
-            size="lg"
-            className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-6 text-lg"
-          >
-            Access Platform
-          </Button>
-        </div>
+        <section className="py-12">
+          <div className="bg-white rounded-xl shadow-md p-10 text-center">
+            <h2 className="text-2xl font-bold text-slate-900 mb-3">Ready to transform your marketing?</h2>
+            <p className="text-slate-600 mb-6">Start with a quick sign-in and explore the platform.</p>
+            <Button onClick={() => setShowLoginModal(true)} className="bg-slate-900 text-white px-6 py-3">Access Platform</Button>
+          </div>
+        </section>
       </div>
 
       {/* Login Modal */}
