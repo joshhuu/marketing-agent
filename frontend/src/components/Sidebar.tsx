@@ -1,8 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Sparkles, History, Users,
-  ChevronLeft, ChevronRight, BarChart, Mail,
-  Shield, User, Eye
+  ChevronLeft, ChevronRight, BarChart2, Mail,
+  Shield, User, Eye, Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,9 +13,9 @@ interface SidebarProps {
 }
 
 const ROLE_CONFIG = {
-  admin: { label: 'Admin', icon: Shield, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' },
-  user: { label: 'User', icon: User, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-200' },
-  viewer: { label: 'Viewer', icon: Eye, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-200' },
+  admin: { label: 'Admin', icon: Shield, dot: 'bg-rose-400', ring: 'ring-rose-400/30' },
+  user: { label: 'User', icon: User, dot: 'bg-violet-400', ring: 'ring-violet-400/30' },
+  viewer: { label: 'Viewer', icon: Eye, dot: 'bg-sky-400', ring: 'ring-sky-400/30' },
 };
 
 const NAV_ITEMS = [
@@ -24,7 +24,7 @@ const NAV_ITEMS = [
   { to: '/history', label: 'History', icon: History, roles: ['admin', 'user', 'viewer'] },
   { to: '/prospects', label: 'Prospects', icon: Users, roles: ['admin', 'user', 'viewer'] },
   { to: '/sent-emails', label: 'Sent Emails', icon: Mail, roles: ['admin', 'user'] },
-  { to: '/admin/analytics', label: 'Analytics', icon: BarChart, roles: ['admin'] },
+  { to: '/admin/analytics', label: 'Analytics', icon: BarChart2, roles: ['admin'] },
 ];
 
 export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
@@ -34,20 +34,26 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
   const visible = NAV_ITEMS.filter(item => userRole && item.roles.includes(userRole));
   const role = userRole as 'admin' | 'user' | 'viewer' | null;
   const roleConf = role ? ROLE_CONFIG[role] : null;
-  const RoleIcon = roleConf?.icon;
 
   return (
     <aside
-      className={`fixed left-0 top-0 h-screen bg-white border-r border-slate-100 shadow-sm flex flex-col transition-all duration-300 z-50 ${collapsed ? 'w-16' : 'w-64'}`}
+      className={`fixed left-0 top-0 h-screen flex flex-col transition-all duration-300 z-50 ${collapsed ? 'w-[68px]' : 'w-[220px]'}`}
+      style={{
+        background: 'linear-gradient(180deg, #0f172a 0%, #0d1526 60%, #0f1730 100%)',
+        boxShadow: '4px 0 24px rgba(0,0,0,0.18)',
+      }}
     >
       {/* ── Logo ── */}
-      <div className={`h-16 flex items-center border-b border-slate-100 flex-shrink-0 ${collapsed ? 'justify-center px-2' : 'px-5 gap-3'}`}>
+      <div className={`h-16 flex items-center flex-shrink-0 border-b border-white/5 ${collapsed ? 'justify-center px-2' : 'px-5'}`}>
         <Link to="/" className="group flex items-center gap-3 min-w-0">
-          <img
-            src="/logo.png"
-            alt="Infynd Aurevix"
-            className="w-8 h-8 rounded-lg object-contain flex-shrink-0 group-hover:scale-105 transition-transform duration-200"
-          />
+          <div className="relative flex-shrink-0">
+            <div className="absolute inset-0 rounded-xl bg-indigo-500/30 blur-md group-hover:blur-lg transition-all" />
+            <img
+              src="/logo.png"
+              alt="Infynd Aurevix"
+              className="relative w-8 h-8 rounded-xl object-contain group-hover:scale-105 transition-transform duration-200"
+            />
+          </div>
           <AnimatePresence>
             {!collapsed && (
               <motion.div
@@ -56,97 +62,115 @@ export function Sidebar({ collapsed, setCollapsed }: SidebarProps) {
                 exit={{ opacity: 0, width: 0 }}
                 className="overflow-hidden"
               >
-                <span className="font-bold text-slate-900 text-sm tracking-tight whitespace-nowrap">
-                  Infynd <span className="text-gradient">Aurevix</span>
-                </span>
+                <p className="font-extrabold text-white text-sm tracking-tight leading-none whitespace-nowrap">
+                  Infynd <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">Aurevix</span>
+                </p>
+                <p className="text-[10px] text-white/30 font-medium tracking-widest uppercase mt-0.5">Marketing OS</p>
               </motion.div>
             )}
           </AnimatePresence>
         </Link>
       </div>
 
-      {/* ── Role Badge (expanded only) ── */}
+      {/* ── Role Badge ── */}
       <AnimatePresence>
-        {!collapsed && roleConf && RoleIcon && (
+        {!collapsed && roleConf && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="px-4 pt-4 pb-2 flex-shrink-0"
+            className="px-4 pt-4 pb-1 flex-shrink-0"
           >
-            <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${roleConf.bg} ${roleConf.border}`}>
-              <div className={`w-7 h-7 rounded-lg bg-white flex items-center justify-center shadow-sm flex-shrink-0`}>
-                <RoleIcon size={14} className={roleConf.color} />
-              </div>
+            <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-white/5 border border-white/8">
+              <div className={`w-1.5 h-1.5 rounded-full ${roleConf.dot} ring-4 ${roleConf.ring}`} />
               <div className="min-w-0">
-                <p className="text-[10px] text-slate-400 font-medium leading-none">Signed in as</p>
-                <p className={`text-xs font-bold ${roleConf.color} capitalize leading-tight mt-0.5`}>{roleConf.label}</p>
+                <p className="text-[9px] text-white/30 font-semibold uppercase tracking-widest leading-none">Signed in as</p>
+                <p className="text-xs font-bold text-white/80 capitalize mt-0.5">{roleConf.label}</p>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* ── Nav ── */}
-      <nav className="flex-1 overflow-y-auto py-3">
-        {!collapsed && (
-          <p className="px-5 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Navigation</p>
-        )}
-        <div className={`space-y-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
-          {visible.map(({ to, label, icon: Icon }) => {
-            const isActive = location.pathname === to;
-            return (
-              <Link
-                key={to}
-                to={to}
-                title={collapsed ? label : undefined}
-                className={`relative flex items-center gap-3 rounded-xl text-sm font-medium transition-all duration-150 ${collapsed ? 'justify-center w-10 h-10 mx-auto' : 'px-3 py-2.5'
-                  } ${isActive
-                    ? 'bg-indigo-50 text-indigo-700'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                  }`}
-              >
-                {/* Active indicator bar */}
-                {isActive && !collapsed && (
-                  <motion.div
-                    layoutId="sidebar-active"
-                    className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-indigo-600 rounded-r-full"
-                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                  />
-                )}
+      {/* ── Nav Label ── */}
+      {!collapsed && (
+        <p className="px-5 pt-5 pb-2 text-[9px] font-bold text-white/20 uppercase tracking-[0.15em]">Navigation</p>
+      )}
 
-                <Icon
-                  size={18}
-                  className={`flex-shrink-0 ${isActive ? 'text-indigo-600' : ''}`}
+      {/* ── Nav Items ── */}
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? 'py-4 px-2' : 'px-3 pb-4'} space-y-0.5`}>
+        {visible.map(({ to, label, icon: Icon }) => {
+          const isActive = location.pathname === to;
+          return (
+            <Link
+              key={to}
+              to={to}
+              title={collapsed ? label : undefined}
+              className={`relative flex items-center rounded-xl text-sm font-medium transition-all duration-200 group ${collapsed ? 'justify-center w-10 h-10 mx-auto' : 'gap-3 px-3 py-2.5'
+                } ${isActive
+                  ? 'text-white'
+                  : 'text-white/40 hover:text-white/80'
+                }`}
+            >
+              {/* Active glow bg */}
+              {isActive && (
+                <motion.div
+                  layoutId="sidebar-active-bg"
+                  className="absolute inset-0 rounded-xl"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(99,102,241,0.35) 0%, rgba(139,92,246,0.2) 100%)',
+                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)',
+                  }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 35 }}
                 />
+              )}
 
-                {!collapsed && (
-                  <span className="flex-1 truncate">{label}</span>
-                )}
+              {/* Left accent bar */}
+              {isActive && !collapsed && (
+                <motion.div
+                  layoutId="sidebar-active-bar"
+                  className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-indigo-400"
+                  transition={{ type: 'spring', stiffness: 400, damping: 35 }}
+                />
+              )}
 
-                {/* Active dot for collapsed */}
-                {isActive && collapsed && (
-                  <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-600" />
-                )}
-              </Link>
-            );
-          })}
-        </div>
+              <Icon
+                size={17}
+                className={`flex-shrink-0 relative z-10 transition-all ${isActive ? 'text-indigo-300' : 'group-hover:text-white/70'
+                  }`}
+              />
+
+              {!collapsed && (
+                <span className="flex-1 truncate relative z-10">{label}</span>
+              )}
+
+              {/* Collapsed active dot */}
+              {isActive && collapsed && (
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-indigo-400" />
+              )}
+
+              {/* Hover glow for inactive */}
+              {!isActive && (
+                <div className="absolute inset-0 rounded-xl bg-white/0 group-hover:bg-white/5 transition-all" />
+              )}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* ── Collapse Toggle ── */}
-      <div className="flex-shrink-0 p-3 border-t border-slate-100">
+      <div className="flex-shrink-0 p-3 border-t border-white/5">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          title={collapsed ? 'Expand' : 'Collapse'}
-          className={`w-full flex items-center rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-all py-2 text-xs font-medium ${collapsed ? 'justify-center' : 'gap-2 px-3'
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className={`w-full flex items-center rounded-xl text-white/30 hover:text-white/70 hover:bg-white/5 transition-all py-2 text-xs font-medium ${collapsed ? 'justify-center' : 'gap-2 px-3'
             }`}
         >
           {collapsed ? (
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           ) : (
             <>
-              <ChevronLeft size={16} />
+              <ChevronLeft size={15} />
               <span>Collapse</span>
             </>
           )}
