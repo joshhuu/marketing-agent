@@ -1,16 +1,42 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Users, TrendingUp, Target, Clock, Search, ChevronUp, ChevronDown, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Users, TrendingUp, Target, Star, Search,
+  ChevronUp, ChevronDown, AlertCircle,
+  ChevronLeft, ChevronRight, X, BarChart2
+} from 'lucide-react';
 import { ApiClient, ProspectHistory } from '../lib/api';
 import { ProspectDetailModal } from '../components/ProspectDetailModal';
 
-const STATUS_COLORS: Record<string, string> = {
-  'New': 'bg-muted text-muted-foreground',
-  'Contacted': 'bg-primary/10 text-primary',
-  'Replied': 'bg-warning/10 text-warning',
-  'Meeting Booked': 'bg-success/10 text-success',
+/* ─── helpers ─────────────────────────────────────────────── */
+type SortKey = 'priority' | 'name' | 'company';
+type SortDir = 'asc' | 'desc';
+
+const priorityStyle = (score: number) => {
+  if (score >= 0.85) return { text: 'text-emerald-600', bar: 'bg-emerald-500', label: 'High' };
+  if (score >= 0.70) return { text: 'text-amber-600', bar: 'bg-amber-500', label: 'Mid' };
+  return { text: 'text-slate-400', bar: 'bg-slate-300', label: 'Low' };
 };
 
+const formatLastContacted = (dateStr: string | null): string => {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  const diffDays = (Date.now() - date.getTime()) / 86_400_000;
+  if (diffDays < 1) return 'Today';
+  if (diffDays < 2) return 'Yesterday';
+  if (diffDays < 7) return 'This week';
+  return date.toLocaleDateString();
+};
+
+// Deterministic avatar color from name
+const AVATAR_COLORS = [
+  'bg-indigo-500', 'bg-violet-500', 'bg-blue-500',
+  'bg-emerald-500', 'bg-pink-500', 'bg-amber-500', 'bg-sky-500',
+];
+const avatarColor = (name: string) =>
+  AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+
+/* ─── type ───────────────────────────────────────────────── */
 interface Prospect {
   id: string;
   name: string;
@@ -23,28 +49,7 @@ interface Prospect {
   fromCampaign?: boolean;
 }
 
-type SortKey = 'priority' | 'name' | 'company';
-type SortDir = 'asc' | 'desc';
-
-const PRIORITY_COLOR = (score: number) => {
-  if (score >= 0.85) return 'text-success font-bold';
-  if (score >= 0.70) return 'text-warning font-semibold';
-  return 'text-muted-foreground';
-};
-
-const formatLastContacted = (dateStr: string | null): string => {
-  if (!dateStr) return '—';
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = diffMs / (1000 * 60 * 60 * 24);
-  
-  if (diffDays < 1) return 'Today';
-  if (diffDays < 2) return 'Yesterday';
-  if (diffDays < 7) return 'This week';
-  return date.toLocaleDateString();
-};
-
+/* ─── page ───────────────────────────────────────────────── */
 export default function ProspectsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [search, setSearch] = useState('');
@@ -58,14 +63,11 @@ export default function ProspectsPage() {
   const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
-    const fetchProspects = async () => {
+    (async () => {
       try {
-        setLoading(true);
-        setError(null);
-        // Fetch paginated prospects from database
+        setLoading(true); setError(null);
         const response = await ApiClient.getRecentCampaignProspects(50, currentPage);
-        
-        const mapped: Prospect[] = response.prospects.map((item: ProspectHistory) => ({
+        setProspects(response.prospects.map((item: ProspectHistory) => ({
           id: item.id,
           name: item.name,
           title: item.job_title,
@@ -75,227 +77,300 @@ export default function ProspectsPage() {
           timesContacted: item.times_contacted,
           lastContacted: formatLastContacted(item.last_contacted_at),
           fromCampaign: item.from_campaign || false,
-        }));
-        
-        setProspects(mapped);
+        })));
         setTotalProspects(response.total);
         setTotalPages(response.total_pages);
-      } catch (err) {
-        console.error('Failed to fetch prospects:', err);
+      } catch {
         setError('Failed to load prospects. Make sure the backend is running.');
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchProspects();
+    })();
   }, [currentPage]);
 
   const handleSort = (key: SortKey) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const filtered = prospects
-    .filter(p => {
-      const q = search.toLowerCase();
-      return p.name.toLowerCase().includes(q) || 
-             p.company.toLowerCase().includes(q) || 
-             p.title.toLowerCase().includes(q) || 
-             p.industry.toLowerCase().includes(q);
-    })
-    .sort((a, b) => {
-      const mult = sortDir === 'asc' ? 1 : -1;
-      if (sortKey === 'priority') return mult * (a.priority - b.priority);
-      if (sortKey === 'name') return mult * a.name.localeCompare(b.name);
-      return mult * a.company.localeCompare(b.company);
-    });
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return prospects
+      .filter((p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.company.toLowerCase().includes(q) ||
+        p.title.toLowerCase().includes(q) ||
+        p.industry.toLowerCase().includes(q)
+      )
+      .sort((a, b) => {
+        const m = sortDir === 'asc' ? 1 : -1;
+        if (sortKey === 'priority') return m * (a.priority - b.priority);
+        if (sortKey === 'name') return m * a.name.localeCompare(b.name);
+        return m * a.company.localeCompare(b.company);
+      });
+  }, [prospects, search, sortKey, sortDir]);
 
   const SortIcon = ({ k }: { k: SortKey }) => {
-    if (sortKey !== k) return null;
-    return sortDir === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />;
+    if (sortKey !== k) return <ChevronUp size={12} className="text-slate-300" />;
+    return sortDir === 'asc'
+      ? <ChevronUp size={12} className="text-indigo-500" />
+      : <ChevronDown size={12} className="text-indigo-500" />;
   };
 
-  const stats = [
-    { label: 'Total Prospects', value: totalProspects, icon: Users, color: 'text-primary', bg: 'bg-accent' },
-    { label: 'High Priority', value: prospects.filter(p => p.priority >= 0.85).length, icon: Target, color: 'text-success', bg: 'bg-success/10' },
-    { label: 'Contacted', value: prospects.filter(p => p.timesContacted > 0).length, icon: TrendingUp, color: 'text-warning', bg: 'bg-warning/10' },
-    { label: 'Avg Priority', value: prospects.length > 0 ? (prospects.reduce((a, p) => a + p.priority, 0) / prospects.length).toFixed(2) : '0.00', icon: Clock, color: 'text-primary', bg: 'bg-primary/10' },
+  const highPriority = prospects.filter((p) => p.priority >= 0.85).length;
+  const contacted = prospects.filter((p) => p.timesContacted > 0).length;
+  const avgPriority = prospects.length > 0
+    ? (prospects.reduce((a, p) => a + p.priority, 0) / prospects.length).toFixed(2)
+    : '0.00';
+
+  const STAT_CARDS = [
+    { label: 'Total Prospects', value: totalProspects, icon: Users, gradient: 'from-indigo-500 to-violet-600' },
+    { label: 'High Priority', value: highPriority, icon: Target, gradient: 'from-emerald-500 to-teal-600' },
+    { label: 'Contacted', value: contacted, icon: TrendingUp, gradient: 'from-amber-500 to-orange-500' },
+    { label: 'Avg Score', value: avgPriority, icon: BarChart2, gradient: 'from-blue-500 to-sky-500' },
   ];
 
   return (
-    <div className="min-h-full gradient-bg">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-12">
-        {/* Header */}
+    <div className="min-h-full bg-slate-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        {/* ── Header ── */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center">
-              <Users className="w-5 h-5 text-primary-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold text-foreground">Prospects Dashboard</h1>
-          </div>
-          <p className="text-muted-foreground">Browse all prospects in your database with pagination</p>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Prospects</h1>
+          <p className="text-slate-500 text-sm mt-0.5">Browse all ICP-matched prospects in your database</p>
         </motion.div>
 
-        {/* Stats */}
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {stats.map((stat, i) => (
-            <motion.div key={i} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + i * 0.06 }}
-              className="card-glass rounded-xl p-4">
-              <div className={`w-8 h-8 rounded-lg ${stat.bg} flex items-center justify-center mb-3`}>
-                <stat.icon className={`w-4 h-4 ${stat.color}`} />
-              </div>
-              <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-              <div className="text-xs text-muted-foreground mt-0.5">{stat.label}</div>
-            </motion.div>
-          ))}
-        </motion.div>
+        {/* ── KPI Cards ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+          {STAT_CARDS.map((s, i) => {
+            const Icon = s.icon;
+            return (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06 }}
+                className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-md bg-gradient-to-br ${s.gradient}`}
+              >
+                <div className="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/10 blur-xl" />
+                <div className="flex items-start justify-between relative z-10">
+                  <div>
+                    <p className="text-white/70 text-xs font-medium mb-1">{s.label}</p>
+                    <p className="text-3xl font-extrabold">{s.value}</p>
+                  </div>
+                  <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
+                    <Icon size={17} className="text-white" />
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
 
-        {/* Filters */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        {/* ── Search ── */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="mb-5">
+          <div className="relative max-w-md">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search by name, company, title, industry..."
-              className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-card border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, company, title, industry…"
+              className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent shadow-sm transition-all"
             />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
+                <X size={14} />
+              </button>
+            )}
           </div>
         </motion.div>
 
-        {/* Loading state */}
+        {/* ── Loading ── */}
         {loading && (
-          <div className="text-center py-16">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="text-muted-foreground mt-4">Loading prospects...</p>
+          <div className="flex flex-col items-center justify-center py-24">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-slate-500 text-sm">Loading prospects…</p>
           </div>
         )}
 
-        {/* Error state */}
+        {/* ── Error ── */}
         {error && (
-          <div className="card-glass rounded-xl p-6 border border-destructive/20 bg-destructive/5">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-destructive mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-semibold text-destructive mb-1">Error Loading Prospects</h3>
-                <p className="text-sm text-muted-foreground">{error}</p>
-              </div>
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-5 flex gap-3 mb-5">
+            <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold text-red-700 text-sm">Error loading prospects</p>
+              <p className="text-red-600 text-xs mt-0.5">{error}</p>
             </div>
           </div>
         )}
 
-        {/* Prospects Table */}
+        {/* ── Table ── */}
         {!loading && !error && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
-            className="card-glass rounded-xl overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border/60 bg-muted/30">
-                    {[
-                      { key: 'name' as SortKey, label: 'Name' },
-                      { key: null, label: 'Title' },
-                      { key: 'company' as SortKey, label: 'Company' },
-                      { key: null, label: 'Industry' },
-                      { key: 'priority' as SortKey, label: 'Priority' },
-                      { key: null, label: 'Last Contact' },
-                    ].map(col => (
-                      <th key={col.label}
-                        onClick={col.key ? () => handleSort(col.key!) : undefined}
-                        className={`text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide ${col.key ? 'cursor-pointer hover:text-foreground select-none' : ''}`}>
-                        <span className="flex items-center gap-1">
-                          {col.label}
-                          {col.key && <SortIcon k={col.key} />}
-                        </span>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {filtered.map((prospect, i) => (
-                    <motion.tr key={prospect.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.02 * i }}
-                      onClick={() => setSelectedProspectId(prospect.id)}
-                      className="hover:bg-accent/20 transition-colors group cursor-pointer">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full bg-gradient-primary flex items-center justify-center text-primary-foreground text-xs font-bold flex-shrink-0">
-                            {prospect.name.charAt(0)}
-                          </div>
-                          <span className="text-sm font-medium text-foreground">{prospect.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{prospect.title}</td>
-                      <td className="px-4 py-3 text-sm text-foreground font-medium">{prospect.company}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">{prospect.industry}</span>
-                          {prospect.fromCampaign && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">📊 Campaign</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden max-w-16">
-                            <div className="h-full bg-gradient-primary rounded-full" style={{ width: `${prospect.priority * 100}%` }} />
-                          </div>
-                          <span className={`text-xs font-mono ${PRIORITY_COLOR(prospect.priority)}`}>{prospect.priority.toFixed(2)}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-muted-foreground">
-                          {prospect.lastContacted}
-                          {prospect.timesContacted > 0 && ` (${prospect.timesContacted}x)`}
-                        </span>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </tbody>
-              </table>
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+              {/* Table head */}
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50">
+                      {[
+                        { key: 'name' as SortKey, label: 'Name' },
+                        { key: null, label: 'Title' },
+                        { key: 'company' as SortKey, label: 'Company' },
+                        { key: null, label: 'Industry' },
+                        { key: 'priority' as SortKey, label: 'Priority' },
+                        { key: null, label: 'Last Contact' },
+                      ].map((col) => (
+                        <th
+                          key={col.label}
+                          onClick={col.key ? () => handleSort(col.key!) : undefined}
+                          className={`text-left px-5 py-3.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest ${col.key ? 'cursor-pointer hover:text-slate-700 select-none' : ''}`}
+                        >
+                          <span className="flex items-center gap-1">
+                            {col.label}
+                            {col.key && <SortIcon k={col.key} />}
+                          </span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    <AnimatePresence>
+                      {filtered.map((p, i) => {
+                        const ps = priorityStyle(p.priority);
+                        return (
+                          <motion.tr
+                            key={p.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ delay: Math.min(i * 0.02, 0.4) }}
+                            onClick={() => setSelectedProspectId(p.id)}
+                            className="hover:bg-indigo-50/50 transition-colors group cursor-pointer"
+                          >
+                            {/* Name + avatar */}
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-xl ${avatarColor(p.name)} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                                  {p.name.charAt(0).toUpperCase()}
+                                </div>
+                                <span className="text-sm font-semibold text-slate-800 group-hover:text-indigo-700 transition-colors">{p.name}</span>
+                              </div>
+                            </td>
+
+                            {/* Title */}
+                            <td className="px-5 py-3.5 text-sm text-slate-500">{p.title}</td>
+
+                            {/* Company */}
+                            <td className="px-5 py-3.5">
+                              <span className="text-sm font-medium text-slate-800">{p.company}</span>
+                            </td>
+
+                            {/* Industry + badge */}
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg">{p.industry}</span>
+                                {p.fromCampaign && (
+                                  <span className="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-lg font-medium">📊 Campaign</span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Priority */}
+                            <td className="px-5 py-3.5">
+                              <div className="flex items-center gap-2">
+                                <div className="w-14 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${ps.bar}`}
+                                    style={{ width: `${p.priority * 100}%` }}
+                                  />
+                                </div>
+                                <span className={`text-xs font-mono font-bold ${ps.text}`}>{p.priority.toFixed(2)}</span>
+                                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${p.priority >= 0.85 ? 'bg-emerald-50 text-emerald-600' :
+                                    p.priority >= 0.70 ? 'bg-amber-50 text-amber-600' :
+                                      'bg-slate-100 text-slate-500'
+                                  }`}>{ps.label}</span>
+                              </div>
+                            </td>
+
+                            {/* Last contact */}
+                            <td className="px-5 py-3.5">
+                              <div className="text-xs text-slate-500">
+                                {p.lastContacted}
+                                {p.timesContacted > 0 && (
+                                  <span className="ml-1.5 font-semibold text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-md">
+                                    ×{p.timesContacted}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </motion.tr>
+                        );
+                      })}
+                    </AnimatePresence>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Empty state inside table */}
+              {filtered.length === 0 && (
+                <div className="py-16 flex flex-col items-center text-center">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
+                    <Users size={24} className="text-slate-400" />
+                  </div>
+                  <p className="font-semibold text-slate-700 mb-1">No prospects found</p>
+                  <p className="text-slate-400 text-sm">Try adjusting your search query</p>
+                </div>
+              )}
+
+              {/* Pagination */}
+              <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <p className="text-xs text-slate-400">
+                  Page <span className="font-semibold text-slate-600">{currentPage}</span> of <span className="font-semibold text-slate-600">{totalPages}</span>
+                  <span className="ml-1.5">({totalProspects.toLocaleString()} total)</span>
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-white hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    <ChevronLeft size={14} /> Prev
+                  </button>
+
+                  {/* Page numbers */}
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    const page = i + 1;
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${currentPage === page
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'text-slate-500 hover:bg-slate-100'
+                          }`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-white hover:border-indigo-300 hover:text-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                  >
+                    Next <ChevronRight size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
-            
-            {/* Pagination Controls */}
-            <div className="px-4 py-3 border-t border-border/40 flex items-center justify-between">
-              <div className="text-xs text-muted-foreground">
-                Showing page {currentPage} of {totalPages} ({totalProspects} total prospects)
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous
-                </button>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-sm font-medium hover:bg-muted/80 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-1"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            
-            {filtered.length === 0 && (
-              <div className="py-12 text-center text-muted-foreground">
-                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                <p>No prospects match your search</p>
-              </div>
-            )}
           </motion.div>
         )}
       </div>
 
-      {/* Prospect Detail Modal */}
+      {/* ── Prospect Detail Modal ── */}
       <ProspectDetailModal
         prospectId={selectedProspectId}
         onClose={() => setSelectedProspectId(null)}
