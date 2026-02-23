@@ -16,14 +16,14 @@ import { FormattedText } from '../lib/formatters';
 /* ─── Types ─────────────────────────────────────────────── */
 type Stage = 'input_parser' | 'classifier' | 'strategy' | 'icp_matcher' | 'platform' | 'content_generator' | 'complete';
 
-const STAGES: { id: Stage; label: string; emoji: string; icon: any; color: string; duration: number }[] = [
-  { id: 'input_parser', label: 'Input Parser', emoji: '🔍', icon: Bot, color: 'bg-indigo-500', duration: 2200 },
-  { id: 'classifier', label: 'Classifier', emoji: '🏷️', icon: Cpu, color: 'bg-violet-500', duration: 1800 },
-  { id: 'strategy', label: 'Strategy', emoji: '🎯', icon: Target, color: 'bg-blue-500', duration: 2000 },
-  { id: 'icp_matcher', label: 'ICP Matcher', emoji: '👥', icon: Filter, color: 'bg-sky-500', duration: 2500 },
-  { id: 'platform', label: 'Platform Decision', emoji: '📡', icon: Activity, color: 'bg-cyan-500', duration: 1600 },
-  { id: 'content_generator', label: 'Content Generator', emoji: '✍️', icon: Zap, color: 'bg-emerald-500', duration: 3000 },
-  { id: 'complete', label: 'Complete', emoji: '🎉', icon: Send, color: 'bg-green-500', duration: 0 },
+const STAGES: { id: Stage; label: string; icon: any; color: string; duration: number }[] = [
+  { id: 'input_parser', label: 'Input Parser', icon: Bot, color: 'bg-indigo-500', duration: 2200 },
+  { id: 'classifier', label: 'Classifier', icon: Cpu, color: 'bg-violet-500', duration: 1800 },
+  { id: 'strategy', label: 'Strategy', icon: Target, color: 'bg-blue-500', duration: 2000 },
+  { id: 'icp_matcher', label: 'ICP Matcher', icon: Filter, color: 'bg-sky-500', duration: 2500 },
+  { id: 'platform', label: 'Platform Decision', icon: Activity, color: 'bg-cyan-500', duration: 1600 },
+  { id: 'content_generator', label: 'Content Generator', icon: Zap, color: 'bg-emerald-500', duration: 3000 },
+  { id: 'complete', label: 'Complete', icon: Send, color: 'bg-green-500', duration: 0 },
 ];
 
 const STAGE_INDEX: Record<Stage, number> = {
@@ -101,9 +101,9 @@ function StageContent({
 
   return (
     <div className={`rounded-2xl border transition-all duration-300 overflow-hidden ${isDone ? 'border-emerald-200 bg-emerald-50/40' :
-        isApproval ? 'border-amber-300 bg-amber-50/60' :
-          isActive ? 'border-indigo-200 bg-indigo-50/50' :
-            'border-slate-100 bg-slate-50/60'
+      isApproval ? 'border-amber-300 bg-amber-50/60' :
+        isActive ? 'border-indigo-200 bg-indigo-50/50' :
+          'border-slate-100 bg-slate-50/60'
       }`}>
       {/* Stage header */}
       <button
@@ -640,10 +640,10 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
               const Icon = stage.icon;
               return (
                 <div key={stage.id} className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${status === 'active' || status === 'approval' ? 'bg-indigo-600/20 border border-indigo-500/30' :
-                    status === 'done' ? 'bg-emerald-500/10' : 'opacity-40'
+                  status === 'done' ? 'bg-emerald-500/10' : 'opacity-40'
                   }`}>
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${status === 'done' ? 'bg-emerald-500' :
-                      status === 'active' || status === 'approval' ? stage.color : 'bg-slate-700'
+                    status === 'active' || status === 'approval' ? stage.color : 'bg-slate-700'
                     }`}>
                     {status === 'done' ? (
                       <CheckCircle size={16} className="text-white" />
@@ -655,7 +655,7 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className={`text-xs font-semibold truncate ${status === 'done' ? 'text-emerald-400' :
-                        status === 'active' || status === 'approval' ? 'text-white' : 'text-slate-500'
+                      status === 'active' || status === 'approval' ? 'text-white' : 'text-slate-500'
                       }`}>
                       {stage.label}
                     </p>
@@ -700,7 +700,7 @@ export function ExecutionModal({ open, prompt, onClose, onComplete }: ExecutionM
                   const st = getStatus(s, i);
                   return (
                     <div key={s.id} className={`h-1.5 rounded-full transition-all duration-500 ${st === 'done' ? 'bg-emerald-500 w-6' :
-                        st === 'active' || st === 'approval' ? 'bg-indigo-500 w-6' : 'bg-slate-200 w-4'
+                      st === 'active' || st === 'approval' ? 'bg-indigo-500 w-6' : 'bg-slate-200 w-4'
                       }`} />
                   );
                 })}

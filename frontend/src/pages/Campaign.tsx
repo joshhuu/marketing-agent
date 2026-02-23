@@ -8,9 +8,9 @@ const MIN_CHARS = 20;
 const MAX_CHARS = 1000;
 
 const EXAMPLES = [
-  "I'm selling payroll software to managers at companies in the UK. Need to generate leads ASAP.",
-  "Target CTOs at financial companies with our cybersecurity compliance platform. Urgent — Q1 deadlines approaching.",
-  "Reach out to directors about our new CRM tool. Want to book demos next week.",
+  "We're selling FlowHR, an automated HR and payroll platform, to HR directors and operations managers at Healthcare and Manufacturing companies with 200–1000 employees. Goal is to book demo calls this week.",
+  "Promote ShieldLayer Security to CISOs and IT Directors at Finance and Technology firms. They're worried about compliance and security incidents — we need qualified meetings with decision-makers ASAP.",
+  "We want to reach VP of Sales and Sales Directors at Professional Services and SaaS companies using Nexus CRM Pro. They're struggling with low conversion and long sales cycles. Target US and UK, book demos next week.",
 ];
 
 const PIPELINE_STEPS = [
@@ -166,8 +166,8 @@ export default function Campaign() {
                   onClick={handleSubmit}
                   disabled={!isValid}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${isValid
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md hover:shadow-lg hover:-translate-y-0.5'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                     }`}
                 >
                   <Sparkles size={15} />
