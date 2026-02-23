@@ -26,7 +26,7 @@ import time
 
 from graph import build_graph
 from state import AgentState
-from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog, SentEmail
+from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog, SentEmail, FollowUpEmail
 from config import LOG_LEVEL, MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME, MAILEROO_USE_TLS
 
 # Configure logging
@@ -1377,6 +1377,302 @@ Please regenerate the marketing content based on these instructions. Return only
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to regenerate content: {str(e)}"
         )
+
+
+# ========================================
+# FOLLOW-UP SEQUENCE ENDPOINTS
+# ========================================
+
+FOLLOW_UP_ANGLES = [
+    {"step": 1, "angle": "value_reinforcement", "day_offset": 4,
+     "instruction": "Write a concise follow-up email (Day 4) that reinforces the VALUE of the solution. Pick ONE specific benefit or outcome relevant to their pain point and expand on it with a concrete example. Do NOT re-pitch the whole product — be brief and add something new."},
+    {"step": 2, "angle": "social_proof", "day_offset": 8,
+     "instruction": "Write a follow-up email (Day 8) using SOCIAL PROOF. Mention what a similar company or role (same industry/function) achieved with this solution — a specific outcome or metric. Keep it short and end with a soft CTA."},
+    {"step": 3, "angle": "breakup", "day_offset": 10,
+     "instruction": "Write a short BREAK-UP EMAIL (Day 10). Respectfully acknowledge you haven't heard back, assume they may be busy, and offer to close the thread. Create gentle urgency without pressure. End with a single low-friction question."},
+]
+
+
+@app.post("/follow-ups/create/{execution_id}")
+async def create_follow_up_sequence(
+    execution_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Generate and queue a 3-step follow-up email sequence for every prospect in a campaign.
+
+    The LLM generates three different angle emails per prospect:
+    - Step 1 (Day +4): Value reinforcement
+    - Step 2 (Day +8): Social proof
+    - Step 3 (Day +10): Break-up / closing
+
+    **Role Required:** Admin or User
+    """
+    logger.info(f"Creating 3-step follow-up sequence for execution {execution_id}")
+
+    # Verify execution exists
+    classification = db.query(Classification).filter(Classification.id == execution_id).first()
+    if not classification:
+        raise HTTPException(status_code=404, detail=f"Execution {execution_id} not found")
+
+    # Prevent duplicate sequences
+    existing = db.query(FollowUpEmail).filter(FollowUpEmail.execution_id == execution_id).count()
+    if existing > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Follow-up sequence already exists for this execution ({existing} emails queued). Delete them first to recreate."
+        )
+
+    execution_detail = db.query(ExecutionDetail)\
+        .filter(ExecutionDetail.classification_id == execution_id).first()
+    if not execution_detail:
+        raise HTTPException(status_code=404, detail="Execution details not found")
+
+    personalized_content = execution_detail.personalized_content or []
+    email_prospects = [p for p in personalized_content if p.get("email_message")]
+    if not email_prospects:
+        raise HTTPException(status_code=404, detail="No email content found for this execution")
+
+    # Import LLM
+    from utils.llm import get_llm
+    from langchain_core.messages import HumanMessage, SystemMessage
+    llm = get_llm(temperature=0.65)
+
+    base_date = classification.created_at or datetime.utcnow()
+    created_rows = []
+
+    for pc in email_prospects:
+        prospect_name = pc.get("prospect_name", "Prospect")
+        prospect_job = pc.get("prospect_job_title", "")
+        prospect_company = pc.get("prospect_company", "")
+        original_subject = pc.get("email_message", {}).get("subject", "")
+        original_body = pc.get("email_message", {}).get("body", "")
+        sender = execution_detail.sender_name or "the team"
+        product = execution_detail.product_name or "our solution"
+
+        for angle_def in FOLLOW_UP_ANGLES:
+            step = angle_def["step"]
+            angle = angle_def["angle"]
+            day_offset = angle_def["day_offset"]
+            instruction = angle_def["instruction"]
+
+            system_msg = SystemMessage(content=f"""You are {sender}, an expert B2B sales professional.
+You are writing a follow-up email to {prospect_name}, {prospect_job} at {prospect_company}.
+Product: {product}
+
+Original email sent:
+Subject: {original_subject}
+Body:
+{original_body}
+
+Your task: {instruction}
+
+Return ONLY a valid JSON object with exactly these two fields:
+{{
+  "subject": "email subject line",
+  "body": "email body text (plain text, use line breaks)"
+}}
+Do NOT include any explanation or markdown. Just the JSON.""")
+            human_msg = HumanMessage(content="Generate the follow-up email now.")
+
+            try:
+                ai_response = llm.invoke([system_msg, human_msg])
+                raw = ai_response.content.strip()
+                # Strip markdown fences if present
+                if raw.startswith("```"):
+                    raw = "\n".join(raw.split("\n")[1:])
+                if raw.endswith("```"):
+                    raw = "\n".join(raw.split("\n")[:-1])
+                result = json.loads(raw)
+                subject = result.get("subject", f"Re: {original_subject}")
+                body = result.get("body", "")
+            except Exception as e:
+                logger.warning(f"LLM failed for step {step}, prospect {prospect_name}: {e}")
+                subject = f"Re: {original_subject}" if step < 3 else "Following up one last time"
+                body = f"Hi {prospect_name.split()[0] if prospect_name else 'there'},\n\nJust wanted to follow up briefly on my previous email about {product}.\n\nWould you have 15 minutes to connect?\n\nBest,\n{sender}"
+
+            from datetime import timedelta
+            scheduled_date = base_date + timedelta(days=day_offset)
+
+            row = FollowUpEmail(
+                execution_id=execution_id,
+                prospect_id=pc.get("prospect_id"),
+                prospect_name=prospect_name,
+                prospect_email=pc.get("prospect_email", ""),
+                prospect_company=prospect_company,
+                prospect_job_title=prospect_job,
+                step=step,
+                angle=angle,
+                scheduled_date=scheduled_date,
+                subject=subject,
+                body=body,
+                status="pending",
+            )
+            db.add(row)
+            created_rows.append(row)
+
+    db.commit()
+    logger.info(f"Created {len(created_rows)} follow-up emails for execution {execution_id}")
+
+    return {
+        "success": True,
+        "execution_id": execution_id,
+        "queued_count": len(created_rows),
+        "prospects_count": len(email_prospects),
+        "steps_per_prospect": 3,
+        "message": f"Queued {len(created_rows)} follow-up emails across {len(email_prospects)} prospects (3 steps each).",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@app.get("/follow-ups/execution/{execution_id}")
+async def list_follow_ups_for_execution(
+    execution_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    List all queued follow-up emails for a campaign execution, grouped by prospect.
+    """
+    rows = db.query(FollowUpEmail)\
+        .filter(FollowUpEmail.execution_id == execution_id)\
+        .order_by(FollowUpEmail.prospect_name, FollowUpEmail.step)\
+        .all()
+
+    if not rows:
+        return {"follow_ups": [], "total": 0, "execution_id": execution_id}
+
+    # Group by prospect
+    grouped: dict = {}
+    for row in rows:
+        pid = str(row.prospect_id)
+        if pid not in grouped:
+            grouped[pid] = {
+                "prospect_id": pid,
+                "prospect_name": row.prospect_name,
+                "prospect_email": row.prospect_email,
+                "prospect_company": row.prospect_company,
+                "prospect_job_title": row.prospect_job_title,
+                "steps": []
+            }
+        grouped[pid]["steps"].append({
+            "id": str(row.id),
+            "step": row.step,
+            "angle": row.angle,
+            "scheduled_date": row.scheduled_date.isoformat() if row.scheduled_date else None,
+            "status": row.status,
+            "subject": row.subject,
+            "body_preview": (row.body or "")[:150] + ("..." if len(row.body or "") > 150 else ""),
+            "body": row.body,
+            "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+            "recipient_email": row.recipient_email,
+        })
+
+    return {
+        "follow_ups": list(grouped.values()),
+        "total": len(rows),
+        "execution_id": execution_id
+    }
+
+
+@app.post("/follow-ups/send/{follow_up_id}")
+async def send_follow_up_email(
+    follow_up_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Send a specific follow-up email via Maileroo SMTP.
+    Updates status to 'sent' and records sent_at timestamp.
+    """
+    from config import HARDCODED_TEST_EMAILS, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME
+
+    row = db.query(FollowUpEmail).filter(FollowUpEmail.id == follow_up_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Follow-up email not found")
+    if row.status == "sent":
+        raise HTTPException(status_code=409, detail="This follow-up has already been sent")
+    if row.status == "skipped":
+        raise HTTPException(status_code=409, detail="This follow-up was skipped — cannot send")
+
+    # Select recipient (round-robin from hardcoded test emails based on prospect hash)
+    recipient_idx = hash(str(row.prospect_id)) % len(HARDCODED_TEST_EMAILS)
+    recipient = HARDCODED_TEST_EMAILS[recipient_idx]
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = row.subject
+        msg["From"] = f"{MAILEROO_FROM_NAME} <{MAILEROO_FROM_EMAIL}>"
+        msg["To"] = recipient
+        msg["Reply-To"] = MAILEROO_FROM_EMAIL
+
+        # Plain text
+        msg.attach(MIMEText(row.body or "", "plain"))
+
+        # Send via SMTP
+        with smtplib.SMTP(MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT) as smtp:
+            if MAILEROO_USE_TLS:
+                smtp.starttls()
+            if MAILEROO_SMTP_USERNAME and MAILEROO_SMTP_PASSWORD:
+                smtp.login(MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD)
+            smtp.sendmail(MAILEROO_FROM_EMAIL, [recipient], msg.as_string())
+
+        # Update DB
+        row.status = "sent"
+        row.sent_at = datetime.utcnow()
+        row.recipient_email = recipient
+        db.commit()
+
+        logger.info(f"Follow-up step {row.step} sent for prospect {row.prospect_name} → {recipient}")
+
+        return {
+            "success": True,
+            "follow_up_id": follow_up_id,
+            "step": row.step,
+            "angle": row.angle,
+            "prospect_name": row.prospect_name,
+            "recipient_email": recipient,
+            "sent_at": row.sent_at.isoformat(),
+            "message": f"Step {row.step} follow-up sent to {recipient}"
+        }
+
+    except smtplib.SMTPException as e:
+        db.rollback()
+        logger.error(f"SMTP error sending follow-up {follow_up_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"SMTP error: {str(e)}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Unexpected error sending follow-up {follow_up_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Send failed: {str(e)}")
+
+
+@app.post("/follow-ups/skip/{follow_up_id}")
+async def skip_follow_up(
+    follow_up_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Mark a follow-up email as skipped (user decided not to send it).
+    """
+    row = db.query(FollowUpEmail).filter(FollowUpEmail.id == follow_up_id).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Follow-up email not found")
+    if row.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Cannot skip — status is already '{row.status}'")
+
+    row.status = "skipped"
+    db.commit()
+
+    return {
+        "success": True,
+        "follow_up_id": follow_up_id,
+        "step": row.step,
+        "prospect_name": row.prospect_name,
+        "message": f"Step {row.step} follow-up skipped."
+    }
+
 
 
 @app.get("/prospects/recent")

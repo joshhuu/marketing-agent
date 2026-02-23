@@ -247,6 +247,41 @@ class SentEmail(Base):
     classification = relationship("Classification")
 
 
+class FollowUpEmail(Base):
+    """Model for queued follow-up emails (3-step sequence)"""
+    __tablename__ = "follow_up_emails"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    execution_id = Column(UUID(as_uuid=True), ForeignKey('classifications.id'), nullable=False)
+    prospect_id = Column(UUID(as_uuid=True), ForeignKey('prospects.id'), nullable=False)
+
+    # Denormalized prospect info (avoid joins at send time)
+    prospect_name = Column(String(200), nullable=False)
+    prospect_email = Column(String(255), nullable=False)
+    prospect_company = Column(String(200))
+    prospect_job_title = Column(String(150))
+
+    # Sequence metadata
+    step = Column(Integer, nullable=False)  # 1, 2, or 3
+    angle = Column(String(50))  # 'value_reinforcement', 'social_proof', 'breakup'
+    scheduled_date = Column(DateTime, nullable=False)  # execution created_at + day offset
+
+    # Content
+    subject = Column(String(500), nullable=False)
+    body = Column(Text, nullable=False)
+
+    # Status tracking
+    status = Column(String(20), default='pending', nullable=False)  # pending | sent | skipped
+    sent_at = Column(DateTime, nullable=True)
+    recipient_email = Column(String(255))  # actual email sent to (hardcoded test)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    prospect = relationship("Prospect")
+    classification = relationship("Classification")
+
+
 def get_db_session() -> Generator[Session, None, None]:
     """
     Create and yield a database session

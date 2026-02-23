@@ -183,6 +183,34 @@ export interface SentEmailsResponse {
   offset: number;
 }
 
+export interface FollowUpStep {
+  id: string;
+  step: number;
+  angle: 'value_reinforcement' | 'social_proof' | 'breakup' | string;
+  scheduled_date: string | null;
+  status: 'pending' | 'sent' | 'skipped';
+  subject: string;
+  body_preview: string;
+  body: string;
+  sent_at: string | null;
+  recipient_email: string | null;
+}
+
+export interface FollowUpProspect {
+  prospect_id: string;
+  prospect_name: string;
+  prospect_email: string;
+  prospect_company: string;
+  prospect_job_title: string;
+  steps: FollowUpStep[];
+}
+
+export interface FollowUpSequenceResponse {
+  follow_ups: FollowUpProspect[];
+  total: number;
+  execution_id: string;
+}
+
 export class ApiClient {
   /**
    * Execute campaign with SSE streaming
@@ -262,7 +290,7 @@ export class ApiClient {
       };
     } catch (error) {
       onError(error as Error);
-      return () => {};
+      return () => { };
     }
   }
 
@@ -394,6 +422,62 @@ export class ApiClient {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }
+
+  /**
+   * Create a 3-step follow-up email sequence for an execution
+   */
+  static async createFollowUpSequence(executionId: string): Promise<{ queued_count: number; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/follow-ups/create/${executionId}`, {
+      method: 'POST',
+      headers: { 'X-User-Role': getUserRole() },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Failed to create follow-ups' }));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * List all follow-up emails for an execution (grouped by prospect)
+   */
+  static async listFollowUps(executionId: string): Promise<FollowUpSequenceResponse> {
+    const response = await fetch(`${API_BASE_URL}/follow-ups/execution/${executionId}`, {
+      headers: { 'X-User-Role': getUserRole() },
+    });
+    if (!response.ok) throw new Error('Failed to load follow-ups');
+    return response.json();
+  }
+
+  /**
+   * Send a specific follow-up email
+   */
+  static async sendFollowUp(followUpId: string): Promise<{ message: string; recipient_email: string }> {
+    const response = await fetch(`${API_BASE_URL}/follow-ups/send/${followUpId}`, {
+      method: 'POST',
+      headers: { 'X-User-Role': getUserRole() },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Send failed' }));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    return response.json();
+  }
+
+  /**
+   * Skip (cancel) a specific follow-up email
+   */
+  static async skipFollowUp(followUpId: string): Promise<{ message: string }> {
+    const response = await fetch(`${API_BASE_URL}/follow-ups/skip/${followUpId}`, {
+      method: 'POST',
+      headers: { 'X-User-Role': getUserRole() },
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Skip failed' }));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    return response.json();
   }
 
   /**

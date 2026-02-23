@@ -7,7 +7,7 @@ import {
   Edit2, Sparkles, Save, X, Send, Users, CheckCircle, Zap, Globe, Download,
   Copy, Check
 } from 'lucide-react';
-import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
+import { ApiClient, ExecutionDetail, PersonalizedContent, FollowUpSequenceResponse, FollowUpProspect } from '../lib/api';
 import { FormattedText } from '../lib/formatters';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../hooks/use-toast';
@@ -111,8 +111,8 @@ function ContentBlock({
               onClick={handleCopy}
               title="Copy to clipboard"
               className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all duration-200 ${copied
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
                 }`}
             >
               {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
@@ -177,7 +177,21 @@ export default function CampaignDetail() {
   // LinkedIn report download state
   const [isDownloadingReport, setIsDownloadingReport] = useState(false);
 
+  // Follow-up sequence state
+  const [isQueuingFollowUps, setIsQueuingFollowUps] = useState(false);
+  const [followUpData, setFollowUpData] = useState<FollowUpSequenceResponse | null>(null);
+  const [followUpLoadError, setFollowUpLoadError] = useState<string | null>(null);
+  const [followUpExpanded, setFollowUpExpanded] = useState(false);
+  const [sendingFollowUpId, setSendingFollowUpId] = useState<string | null>(null);
+
   useEffect(() => { if (id) fetchDetails(); }, [id]);
+  useEffect(() => {
+    if (!id) return;
+    // Silently load any existing follow-up sequence on page load
+    ApiClient.listFollowUps(id)
+      .then(data => { if (data.total > 0) { setFollowUpData(data); setFollowUpExpanded(true); } })
+      .catch(() => { }); // No follow-ups yet — that's fine
+  }, [id]);
 
   const fetchDetails = async () => {
     if (!id) return;
@@ -230,6 +244,64 @@ export default function CampaignDetail() {
       toast({ title: 'Download Failed', description: e instanceof Error ? e.message : 'Error generating report', variant: 'destructive' });
     } finally {
       setIsDownloadingReport(false);
+    }
+  };
+
+  const handleQueueFollowUps = async () => {
+    if (!id) return;
+    setIsQueuingFollowUps(true);
+    try {
+      const result = await ApiClient.createFollowUpSequence(id);
+      toast({ title: '✅ Follow-Up Sequence Queued', description: result.message });
+      const data = await ApiClient.listFollowUps(id);
+      setFollowUpData(data);
+      setFollowUpExpanded(true);
+    } catch (e) {
+      toast({ title: 'Queue Failed', description: e instanceof Error ? e.message : 'Error queuing follow-ups', variant: 'destructive' });
+    } finally {
+      setIsQueuingFollowUps(false);
+    }
+  };
+
+  const handleSendFollowUp = async (followUpId: string) => {
+    setSendingFollowUpId(followUpId);
+    try {
+      const result = await ApiClient.sendFollowUp(followUpId);
+      toast({ title: '✉️ Follow-Up Sent', description: result.message });
+      // Optimistically update status
+      setFollowUpData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          follow_ups: prev.follow_ups.map(p => ({
+            ...p,
+            steps: p.steps.map(s => s.id === followUpId ? { ...s, status: 'sent' as const } : s)
+          }))
+        };
+      });
+    } catch (e) {
+      toast({ title: 'Send Failed', description: e instanceof Error ? e.message : 'Error sending follow-up', variant: 'destructive' });
+    } finally {
+      setSendingFollowUpId(null);
+    }
+  };
+
+  const handleSkipFollowUp = async (followUpId: string) => {
+    try {
+      await ApiClient.skipFollowUp(followUpId);
+      toast({ title: 'Follow-Up Skipped', description: 'Marked as skipped.' });
+      setFollowUpData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          follow_ups: prev.follow_ups.map(p => ({
+            ...p,
+            steps: p.steps.map(s => s.id === followUpId ? { ...s, status: 'skipped' as const } : s)
+          }))
+        };
+      });
+    } catch (e) {
+      toast({ title: 'Skip Failed', description: e instanceof Error ? e.message : 'Error skipping follow-up', variant: 'destructive' });
     }
   };
 
@@ -691,6 +763,119 @@ export default function CampaignDetail() {
                   </div>
                 </Section>
               </>
+            )}
+            {/* STEP 6 — Follow-Up Sequence */}
+            {executionDetail && (
+              <Section
+                step="6"
+                title="Follow-Up Sequence"
+                icon={<Mail size={16} />}
+                badge={
+                  followUpData && followUpData.total > 0 ? (
+                    <span className="text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">
+                      {followUpData.total} queued
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded-full">
+                      3-step sequence
+                    </span>
+                  )
+                }
+                expanded={followUpExpanded}
+                onToggle={() => setFollowUpExpanded(v => !v)}
+              >
+                <div className="space-y-6 p-4">
+                  {/* Queue button — shown when no sequence yet */}
+                  {(!followUpData || followUpData.total === 0) && (
+                    <div className="text-center py-6">
+                      <p className="text-slate-500 text-sm mb-4 leading-relaxed">
+                        Queue AI-generated follow-up emails for every prospect — 3 different angles sent on Day 4, Day 8, and Day 10.
+                      </p>
+                      {userRole !== 'viewer' && (
+                        <button
+                          onClick={handleQueueFollowUps}
+                          disabled={isQueuingFollowUps}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-60"
+                        >
+                          {isQueuingFollowUps
+                            ? <><Loader2 size={14} className="animate-spin" /> Generating with AI…</>
+                            : <><Sparkles size={14} /> Queue Follow-Up Sequence</>
+                          }
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Timeline per prospect */}
+                  {followUpData && followUpData.follow_ups.map((prospect: FollowUpProspect) => (
+                    <div key={prospect.prospect_id} className="space-y-3">
+                      {/* Prospect header */}
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                          {prospect.prospect_name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">{prospect.prospect_name}</p>
+                          <p className="text-[11px] text-slate-400">{prospect.prospect_job_title} · {prospect.prospect_company}</p>
+                        </div>
+                      </div>
+
+                      {/* Step cards */}
+                      <div className="ml-3.5 border-l-2 border-slate-100 pl-4 space-y-3">
+                        {prospect.steps.map(step => {
+                          const angleLabel = step.angle === 'value_reinforcement' ? '🏆 Value' : step.angle === 'social_proof' ? '📊 Social Proof' : '👋 Break-Up';
+                          const dayLabel = step.step === 1 ? 'Day +4' : step.step === 2 ? 'Day +8' : 'Day +10';
+                          const statusClass = step.status === 'sent'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : step.status === 'skipped'
+                              ? 'bg-slate-50 text-slate-400 border-slate-200 line-through'
+                              : 'bg-amber-50 text-amber-700 border-amber-200';
+                          const statusLabel = step.status === 'sent' ? '✓ Sent' : step.status === 'skipped' ? 'Skipped' : 'Pending';
+                          const isSending = sendingFollowUpId === step.id;
+
+                          return (
+                            <div key={step.id} className={`rounded-xl border p-3 ${step.status === 'skipped' ? 'opacity-50' : 'bg-white border-slate-100'}`}>
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">{dayLabel}</span>
+                                  <span className="text-[10px] font-semibold text-slate-500">{angleLabel}</span>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${statusClass}`}>{statusLabel}</span>
+                                </div>
+                                {step.status === 'pending' && userRole !== 'viewer' && (
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => handleSendFollowUp(step.id)}
+                                      disabled={isSending}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                                    >
+                                      {isSending ? <Loader2 size={10} className="animate-spin" /> : <Send size={10} />}
+                                      {isSending ? 'Sending…' : 'Send'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleSkipFollowUp(step.id)}
+                                      disabled={isSending}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                                    >
+                                      <X size={10} /> Skip
+                                    </button>
+                                  </div>
+                                )}
+                                {step.status === 'sent' && step.sent_at && (
+                                  <span className="text-[10px] text-slate-400 shrink-0">
+                                    Sent {new Date(step.sent_at).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[12px] font-semibold text-slate-700 mb-1">{step.subject}</p>
+                              <p className="text-[11px] text-slate-500 leading-relaxed">{step.body_preview}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Section>
             )}
 
             {/* Timestamp footer */}
