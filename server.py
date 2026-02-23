@@ -73,7 +73,7 @@ class CampaignInput(BaseModel):
         ...,
         description="Target audience description (e.g., 'HR managers', 'CTOs')",
         min_length=1,
-        max_length=200
+        max_length=500
     )
     
     @validator('time', 'location', 'business_behavior', 'intent', 'target_audience')
@@ -324,6 +324,83 @@ app.add_middleware(
     expose_headers=["*"],
     max_age=3600,
 )
+
+
+# ========================================
+# TWILIO VOICE WEBHOOK ROUTES
+# Twilio calls these during AI-powered calls.
+# Must be publicly reachable — use ngrok in dev:
+#   ngrok http 8000
+#   Then set TWILIO_WEBHOOK_BASE_URL=https://xxx.ngrok-free.app in .env
+# ========================================
+
+@app.post("/api/twilio/voice")
+async def twilio_voice_webhook(request: Request):
+    """
+    Twilio calls this webhook when the call connects AND after each Gather (speech input).
+    - First hit (no SpeechResult): speak opener, start listening
+    - Subsequent hits (SpeechResult present): generate AI response, speak it, listen again
+    """
+    from utils.call_conversation import get_opener_text, generate_ai_response, should_continue
+
+    form = await request.form()
+    call_sid = form.get("CallSid", "")
+    speech_result = form.get("SpeechResult", "").strip()
+
+    gather_action = f"/api/twilio/voice"
+
+    if not speech_result:
+        # First hit: speak the opener, then start listening
+        opener = get_opener_text(call_sid)
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="{gather_action}" method="POST"
+          speechTimeout="auto" language="en-US" timeout="8">
+    <Say voice="Polly.Joanna">{opener}</Say>
+  </Gather>
+  <Say voice="Polly.Joanna">I didn't catch that. Thank you for your time. Goodbye.</Say>
+  <Hangup/>
+</Response>"""
+    elif not should_continue(call_sid):
+        # Max turns reached: wrap up gracefully
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Joanna">Thank you so much for your time today. I'll follow up by email with all the details. Have a great day!</Say>
+  <Hangup/>
+</Response>"""
+    else:
+        # Prospect spoke: generate AI response, listen again
+        ai_response = generate_ai_response(call_sid, speech_result)
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather input="speech" action="{gather_action}" method="POST"
+          speechTimeout="auto" language="en-US" timeout="8">
+    <Say voice="Polly.Joanna">{ai_response}</Say>
+  </Gather>
+  <Say voice="Polly.Joanna">Thank you for your time. I'll be in touch. Goodbye!</Say>
+  <Hangup/>
+</Response>"""
+
+    logger.info(f"Twilio voice webhook — CallSid={call_sid} SpeechResult='{speech_result[:60] if speech_result else '(opener)'}'")
+    return Response(content=twiml, media_type="application/xml")
+
+
+@app.post("/api/twilio/status")
+async def twilio_status_webhook(request: Request):
+    """
+    Twilio calls this when the call ends (completed/failed/busy/no-answer).
+    Cleans up the in-memory conversation context.
+    """
+    from utils.call_conversation import cleanup_call
+
+    form = await request.form()
+    call_sid = form.get("CallSid", "")
+    call_status = form.get("CallStatus", "unknown")
+
+    logger.info(f"Twilio status webhook — CallSid={call_sid} Status={call_status}")
+    cleanup_call(call_sid)
+
+    return Response(content="<?xml version='1.0'?><Response/>", media_type="application/xml")
 
 
 # ========================================
