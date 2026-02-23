@@ -57,8 +57,10 @@ def classify_task(state: AgentState) -> Dict[str, Any]:
         
         category = classification_data.get("category", "B2B_lead_gen")
         confidence = classification_data.get("confidence", 0.7)
+        context_reasoning = classification_data.get("context_reasoning", "No contextual signals detected.")
         
         logger.info(f"Classification result: category={category}, confidence={confidence}")
+        logger.info(f"Context reasoning: {context_reasoning[:100]}...")
         
         # Save to database
         try:
@@ -84,6 +86,7 @@ def classify_task(state: AgentState) -> Dict[str, Any]:
             **state,
             "category": category,
             "confidence": float(confidence),
+            "context_reasoning": context_reasoning,
         }
         
     except json.JSONDecodeError as e:
@@ -94,6 +97,7 @@ def classify_task(state: AgentState) -> Dict[str, Any]:
             **state,
             "category": "B2B_lead_gen",
             "confidence": 0.5,
+            "context_reasoning": "Classification failed — defaulting to B2B lead generation.",
         }
     except Exception as e:
         logger.error(f"Error in classifier: {e}")
@@ -101,4 +105,5 @@ def classify_task(state: AgentState) -> Dict[str, Any]:
             **state,
             "category": "B2B_lead_gen",
             "confidence": 0.5,
+            "context_reasoning": "Classification error — defaulting to B2B lead generation.",
         }

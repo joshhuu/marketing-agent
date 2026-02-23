@@ -112,6 +112,11 @@ CONTENT REQUIREMENTS:
      * If they say "send me information"
    - Close: Clear next step based on {cta_type}, respectful of {seniority} level
    - Language: {tone}, conversational but professional
+   - BANT Qualification Checklist: Generate 4 qualifying questions — one for each BANT dimension:
+     * Budget: A natural question to understand if they have budget or authority to allocate it
+     * Authority: A question to uncover if they're the decision-maker or if others need to be involved
+     * Need: A question to validate the pain point and confirm urgency around it
+     * Timeline: A question to understand their purchase or implementation timeline
 
 PERSONALIZATION CHECKLIST (must include):
 ✓ Use {prospect_sample.get('name', 'their name')} naturally (not in every sentence)
@@ -140,7 +145,13 @@ REQUIRED OUTPUT FORMAT (JSON ONLY):
             "Response to 'not a priority'",
             "Response to 'just send info'"
         ],
-        "close": "Clear next step based on {cta_type}"
+        "close": "Clear next step based on {cta_type}",
+        "bant_checklist": {{
+            "budget": "Natural question to understand budget availability or authority to spend",
+            "authority": "Question to uncover decision-making structure and key stakeholders",
+            "need": "Question to validate the pain point and measure urgency",
+            "timeline": "Question to understand when they'd realistically want to move forward"
+        }}
     }}
 }}
 

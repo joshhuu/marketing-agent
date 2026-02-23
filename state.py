@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     # Agent 1 (Classifier) outputs
     category: Optional[str]
     confidence: Optional[float]
+    context_reasoning: Optional[str]  # How time/location influenced classification
     
     # Strategy outputs
     tone: Optional[str]
@@ -34,7 +35,7 @@ class AgentState(TypedDict):
     target_archetype: Optional[str]
     target_audience: Optional[str]
     
-    # Engagement Analyzer outputs (NEW)
+    # Engagement Analyzer outputs
     prospects_filtered_count: Optional[int]  # How many prospects filtered due to recent contact
     
     # Agent 3 (Platform Decision) outputs

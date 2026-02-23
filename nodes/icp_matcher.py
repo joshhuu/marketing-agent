@@ -298,10 +298,63 @@ def match_icp(state: AgentState) -> Dict[str, Any]:
                         archetype = target_audience
                     logger.info(f"Using fallback archetype: {archetype}")
         
+        # ============================================================
+        # COMPUTE PER-PROSPECT ICP FIT SCORE (0-100)
+        # Signals: seniority match (30), industry match (30),
+        #          engagement history (20), is_decision_maker (20)
+        # ============================================================
+        SENIORITY_PRIORITY = {"c_level": 30, "vp": 28, "director": 22, "manager": 15, "individual": 5}
+        target_industry_lower = (industry or "").lower()
+        target_seniority_lower = (seniority or "").lower()
+        
+        enriched_prospects = []
+        for p in prospects:
+            score = 0
+            
+            # Signal 1: Seniority match (30 pts)
+            p_seniority = (p.get("seniority") or "").lower()
+            if target_seniority_lower and p_seniority == target_seniority_lower:
+                score += 30
+            elif p_seniority in SENIORITY_PRIORITY:
+                # Give partial credit based on seniority level even without exact match
+                score += SENIORITY_PRIORITY.get(p_seniority, 0)
+            
+            # Signal 2: Industry match (30 pts)
+            p_industry = (p.get("industry") or "").lower()
+            if target_industry_lower and p_industry == target_industry_lower:
+                score += 30
+            elif target_industry_lower and target_industry_lower in p_industry:
+                score += 20
+            elif not target_industry_lower:
+                score += 15  # No industry filter — give neutral credit
+            
+            # Signal 3: Existing engagement score (20 pts) — from engagement_analyzer
+            eng_score = p.get("engagement_score", 0)
+            score += int((eng_score / 100) * 20)
+            
+            # Signal 4: Is decision maker (20 pts)
+            if p.get("is_decision_maker"):
+                score += 20
+            
+            # Cap at 100
+            icp_fit_score = min(100, score)
+            
+            enriched_prospects.append({
+                **p,
+                "icp_fit_score": icp_fit_score,
+            })
+        
+        # Sort by ICP fit score descending
+        enriched_prospects.sort(key=lambda x: x.get("icp_fit_score", 0), reverse=True)
+        
+        if enriched_prospects:
+            top_score = enriched_prospects[0].get("icp_fit_score", 0)
+            logger.info(f"ICP fit scoring complete. Top prospect score: {top_score}/100")
+        
         # Update state
         return {
             **state,
-            "top_prospects": prospects,
+            "top_prospects": enriched_prospects,
             "target_archetype": archetype,
         }
         
