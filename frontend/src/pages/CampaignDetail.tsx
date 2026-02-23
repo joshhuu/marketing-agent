@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar,
   Target, MessageSquare, Mail, Phone, Package, AlertCircle,
-  Edit2, Sparkles, Save, X, Send, Users, CheckCircle, Zap, Globe, Download
+  Edit2, Sparkles, Save, X, Send, Users, CheckCircle, Zap, Globe, Download,
+  Copy, Check
 } from 'lucide-react';
 import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
 import { FormattedText } from '../lib/formatters';
@@ -69,11 +70,33 @@ function Section({
 
 /* ─── ContentBlock ───────────────────────────────────────── */
 function ContentBlock({
-  icon, title, iconBg, children, onEdit, isEditing, onSave, onCancel, isSaving,
+  icon, title, iconBg, children, onEdit, isEditing, onSave, onCancel, isSaving, copyText,
 }: {
   icon: React.ReactNode; title: string; iconBg: string; children: React.ReactNode;
   onEdit?: () => void; isEditing?: boolean; onSave?: () => void; onCancel?: () => void; isSaving?: boolean;
+  copyText?: string;
 }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!copyText) return;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // fallback for older browsers
+      const el = document.createElement('textarea');
+      el.value = copyText;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-slate-100 overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
@@ -82,6 +105,19 @@ function ContentBlock({
           <span className="text-sm font-bold text-slate-800">{title}</span>
         </div>
         <div className="flex items-center gap-2">
+          {/* Copy button — always show when not editing and copyText is provided */}
+          {!isEditing && copyText && (
+            <button
+              onClick={handleCopy}
+              title="Copy to clipboard"
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-all duration-200 ${copied
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100 hover:text-slate-700'
+                }`}
+            >
+              {copied ? <><Check size={11} /> Copied!</> : <><Copy size={11} /> Copy</>}
+            </button>
+          )}
           {isEditing ? (
             <>
               <button onClick={onCancel} disabled={isSaving}
@@ -501,9 +537,12 @@ export default function CampaignDetail() {
                           const pc = executionDetail.details.personalized_content[selectedProspectIndex];
                           if (activeContentTab === 'linkedin' && pc.linkedin_message) {
                             return (
-                              <ContentBlock icon={<MessageSquare size={13} />} title="LinkedIn Message" iconBg="bg-blue-600"
+                              <ContentBlock
+                                icon={<MessageSquare size={13} />} title="LinkedIn Message" iconBg="bg-blue-600"
                                 onEdit={userRole !== 'viewer' ? () => startEditing('linkedin') : undefined}
-                                isEditing={isEditing === 'linkedin'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}>
+                                isEditing={isEditing === 'linkedin'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}
+                                copyText={pc.linkedin_message}
+                              >
                                 {isEditing === 'linkedin' ? (
                                   <textarea
                                     value={editedContent.linkedin_message || ''}
@@ -520,44 +559,56 @@ export default function CampaignDetail() {
                           }
                           if (activeContentTab === 'email' && pc.email_message) {
                             return (
-                              <ContentBlock icon={<Mail size={13} />} title="Email" iconBg="bg-emerald-600"
+                              <ContentBlock
+                                icon={<Mail size={13} />} title="Email" iconBg="bg-emerald-600"
                                 onEdit={userRole !== 'viewer' ? () => startEditing('email') : undefined}
-                                isEditing={isEditing === 'email'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}>
-                                {isEditing === 'email' ? (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subject</p>
-                                      <input type="text" value={editedContent.email_message?.subject || ''}
-                                        onChange={(e) => setEditedContent({ ...editedContent, email_message: { ...editedContent.email_message!, subject: e.target.value, body: editedContent.email_message?.body || '' } })}
-                                        className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white text-slate-900" />
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Body</p>
-                                      <textarea value={editedContent.email_message?.body || ''}
-                                        onChange={(e) => setEditedContent({ ...editedContent, email_message: { subject: editedContent.email_message?.subject || '', body: e.target.value } })}
-                                        className="w-full min-h-[300px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white text-slate-900 resize-none" />
-                                    </div>
+                                isEditing={isEditing === 'email'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}
+                                copyText={`Subject: ${pc.email_message.subject}\n\n${pc.email_message.body}`}
+                              >                                {isEditing === 'email' ? (
+                                <div className="space-y-3">
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subject</p>
+                                    <input type="text" value={editedContent.email_message?.subject || ''}
+                                      onChange={(e) => setEditedContent({ ...editedContent, email_message: { ...editedContent.email_message!, subject: e.target.value, body: editedContent.email_message?.body || '' } })}
+                                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white text-slate-900" />
                                   </div>
-                                ) : (
-                                  <div className="space-y-4">
-                                    <div>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subject</p>
-                                      <p className="font-semibold text-slate-800">{pc.email_message.subject}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Body</p>
-                                      <FormattedText className="whitespace-pre-wrap leading-relaxed text-slate-700">{pc.email_message.body}</FormattedText>
-                                    </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Body</p>
+                                    <textarea value={editedContent.email_message?.body || ''}
+                                      onChange={(e) => setEditedContent({ ...editedContent, email_message: { subject: editedContent.email_message?.subject || '', body: e.target.value } })}
+                                      className="w-full min-h-[300px] px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white text-slate-900 resize-none" />
                                   </div>
-                                )}
+                                </div>
+                              ) : (
+                                <div className="space-y-4">
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subject</p>
+                                    <p className="font-semibold text-slate-800">{pc.email_message.subject}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Body</p>
+                                    <FormattedText className="whitespace-pre-wrap leading-relaxed text-slate-700">{pc.email_message.body}</FormattedText>
+                                  </div>
+                                </div>
+                              )}
                               </ContentBlock>
                             );
                           }
                           if (activeContentTab === 'call' && pc.call_script) {
+                            const callCopyText = [
+                              `OPENER:\n${pc.call_script.opener}`,
+                              pc.call_script.objections?.length
+                                ? `OBJECTION HANDLING:\n${pc.call_script.objections.map((o, i) => `${i + 1}. ${o}`).join('\n')}`
+                                : null,
+                              pc.call_script.close ? `CLOSE:\n${pc.call_script.close}` : null,
+                            ].filter(Boolean).join('\n\n');
                             return (
-                              <ContentBlock icon={<Phone size={13} />} title="Call Script" iconBg="bg-violet-600"
+                              <ContentBlock
+                                icon={<Phone size={13} />} title="Call Script" iconBg="bg-violet-600"
                                 onEdit={userRole !== 'viewer' ? () => startEditing('call_script') : undefined}
-                                isEditing={isEditing === 'call_script'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}>
+                                isEditing={isEditing === 'call_script'} onSave={saveContent} onCancel={cancelEditing} isSaving={isSaving}
+                                copyText={callCopyText}
+                              >
                                 {isEditing === 'call_script' ? (
                                   <div className="space-y-3">
                                     <div>
