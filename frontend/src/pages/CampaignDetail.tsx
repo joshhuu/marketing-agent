@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Loader2, ChevronDown, ChevronRight, Calendar,
   Target, MessageSquare, Mail, Phone, Package, AlertCircle,
-  Edit2, Sparkles, Save, X, Send, Users, CheckCircle, Zap, Globe
+  Edit2, Sparkles, Save, X, Send, Users, CheckCircle, Zap, Globe, Download
 } from 'lucide-react';
 import { ApiClient, ExecutionDetail, PersonalizedContent } from '../lib/api';
 import { FormattedText } from '../lib/formatters';
@@ -138,6 +138,9 @@ export default function CampaignDetail() {
   const [showSendEmailModal, setShowSendEmailModal] = useState(false);
   const [emailToSend, setEmailToSend] = useState<{ subject: string; prospectId: string } | null>(null);
 
+  // LinkedIn report download state
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+
   useEffect(() => { if (id) fetchDetails(); }, [id]);
 
   const fetchDetails = async () => {
@@ -179,6 +182,19 @@ export default function CampaignDetail() {
     } catch (e) {
       toast({ title: 'Save Failed', description: e instanceof Error ? e.message : 'Error', variant: 'destructive' });
     } finally { setIsSaving(false); }
+  };
+
+  const handleDownloadLinkedInReport = async () => {
+    if (!id) return;
+    setIsDownloadingReport(true);
+    try {
+      await ApiClient.downloadLinkedInReport(id);
+      toast({ title: '✅ Report Downloaded', description: 'LinkedIn outreach report saved — open it in your browser to print as PDF.' });
+    } catch (e) {
+      toast({ title: 'Download Failed', description: e instanceof Error ? e.message : 'Error generating report', variant: 'destructive' });
+    } finally {
+      setIsDownloadingReport(false);
+    }
   };
 
   const handleRegenerate = async () => {
@@ -438,7 +454,21 @@ export default function CampaignDetail() {
 
                         {/* Action buttons */}
                         {userRole !== 'viewer' && !isEditing && (
-                          <div className="flex gap-2 justify-end">
+                          <div className="flex gap-2 justify-end flex-wrap">
+                            {/* Download LinkedIn Report button — always visible when LinkedIn content exists */}
+                            {executionDetail.details.personalized_content.some(pc => pc.linkedin_message) && (
+                              <button
+                                onClick={handleDownloadLinkedInReport}
+                                disabled={isDownloadingReport}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl shadow-sm transition-all disabled:opacity-50"
+                                title="Download LinkedIn messages for all prospects as an HTML report (printable as PDF)"
+                              >
+                                {isDownloadingReport
+                                  ? <><Loader2 size={14} className="animate-spin" /> Generating…</>
+                                  : <><Download size={14} /> LinkedIn Report</>
+                                }
+                              </button>
+                            )}
                             <button
                               onClick={handleSendEmail}
                               disabled={isSendingEmail || !executionDetail.details.personalized_content[selectedProspectIndex]?.email_message}

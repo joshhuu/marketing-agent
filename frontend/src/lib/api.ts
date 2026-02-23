@@ -361,6 +361,42 @@ export class ApiClient {
   }
 
   /**
+   * Download LinkedIn Outreach Report as an HTML file
+   * Triggers a browser file download directly
+   */
+  static async downloadLinkedInReport(executionId: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE_URL}/history/executions/${executionId}/linkedin-report`,
+      {
+        headers: {
+          'X-User-Role': getUserRole(),
+        },
+      }
+    );
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: 'Download failed' }));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+
+    // Get filename from Content-Disposition header
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filenameMatch = disposition.match(/filename="([^"]+)"/);
+    const filename = filenameMatch ? filenameMatch[1] : `linkedin_report_${executionId.slice(0, 8)}.html`;
+
+    // Trigger browser download
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /**
    * Get prospect history
    */
   static async getProspectHistory(

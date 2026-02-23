@@ -938,6 +938,151 @@ async def delete_execution(
         )
 
 
+@app.get("/history/executions/{execution_id}/linkedin-report")
+async def download_linkedin_report(
+    execution_id: str,
+    role: str = Depends(require_role([Role.ADMIN, Role.USER, Role.VIEWER])),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Generate and download a LinkedIn Outreach Report for a campaign execution.
+
+    Returns a styled HTML file (printable as PDF) with all prospect LinkedIn messages.
+
+    **Role Required:** Any authenticated role
+    **Headers:** X-User-Role: "admin", "user", or "viewer"
+    """
+    logger.info(f"Generating LinkedIn report for execution {execution_id}")
+
+    # Fetch classification (campaign metadata)
+    classification = db.query(Classification).filter(Classification.id == execution_id).first()
+    if not classification:
+        raise HTTPException(status_code=404, detail=f"Execution {execution_id} not found")
+
+    # Fetch execution details (personalized content)
+    execution_detail = db.query(ExecutionDetail)\
+        .filter(ExecutionDetail.classification_id == execution_id)\
+        .first()
+
+    if not execution_detail:
+        raise HTTPException(status_code=404, detail="Execution details not found")
+
+    personalized_content = execution_detail.personalized_content or []
+    linkedin_entries = [p for p in personalized_content if p.get("linkedin_message")]
+
+    if not linkedin_entries:
+        raise HTTPException(status_code=404, detail="No LinkedIn content found for this execution")
+
+    # ── Build metadata ──────────────────────────────────────────
+    generated_at = datetime.utcnow().strftime("%B %d, %Y at %H:%M UTC")
+    category = classification.category.replace("_", " ").title() if classification.category else "Campaign"
+    archetype = execution_detail.target_archetype or "B2B Decision Makers"
+    channel = (execution_detail.selected_channel or "linkedin").upper()
+    sender = execution_detail.sender_name or "Marketing Team"
+    audience = execution_detail.target_audience or "Target Audience"
+    prospect_count = len(linkedin_entries)
+
+    # ── Build per-prospect HTML cards ───────────────────────────
+    prospect_cards_html = ""
+    for i, p in enumerate(linkedin_entries, 1):
+        name = p.get("prospect_name", "Unknown")
+        company = p.get("prospect_company", "")
+        title = p.get("prospect_job_title", "")
+        message = p.get("linkedin_message", "").replace("\n", "<br>")
+        icp_score = p.get("icp_fit_score", None)
+
+        score_html = ""
+        if icp_score is not None:
+            score_color = "#10b981" if icp_score >= 75 else ("#f59e0b" if icp_score >= 50 else "#ef4444")
+            score_html = f'<span style="display:inline-block;padding:2px 10px;background:{score_color}20;color:{score_color};border:1px solid {score_color}40;border-radius:20px;font-size:11px;font-weight:700;margin-left:10px;">ICP Score: {icp_score}/100</span>'
+
+        prospect_cards_html += f"""
+        <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:20px;overflow:hidden;page-break-inside:avoid;">
+          <div style="background:linear-gradient(135deg,#1e3a5f,#0f62a8);padding:14px 20px;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <span style="color:#93c5fd;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;">Prospect {i} of {prospect_count}</span>
+              <h3 style="color:#ffffff;margin:2px 0 0;font-size:16px;font-weight:700;">{name}</h3>
+              <p style="color:#bfdbfe;margin:2px 0 0;font-size:12px;">{title} &nbsp;·&nbsp; {company}</p>
+            </div>
+            <div style="text-align:right;">{score_html}</div>
+          </div>
+          <div style="padding:18px 20px;">
+            <p style="font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">LinkedIn Message</p>
+            <div style="font-size:14px;line-height:1.75;color:#1f2937;background:#f9fafb;border-left:3px solid #0f62a8;padding:12px 16px;border-radius:0 8px 8px 0;">{message}</div>
+          </div>
+        </div>"""
+
+    # ── Assemble full HTML ──────────────────────────────────────
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LinkedIn Outreach Report – {category}</title>
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; color: #111827; }}
+    .wrapper {{ max-width: 820px; margin: 0 auto; padding: 32px 20px; }}
+    @media print {{
+      body {{ background: #fff; }}
+      .no-print {{ display: none !important; }}
+      .wrapper {{ padding: 0; }}
+    }}
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- Cover -->
+  <div style="background:linear-gradient(135deg,#1e3a5f 0%,#0f62a8 60%,#0ea5e9 100%);border-radius:16px;padding:40px;margin-bottom:28px;color:#fff;">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+      <div style="width:40px;height:40px;background:rgba(255,255,255,0.2);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;">🔗</div>
+      <span style="font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;opacity:0.8;">LinkedIn Outreach Report</span>
+    </div>
+    <h1 style="font-size:28px;font-weight:800;letter-spacing:-0.5px;margin-bottom:6px;">{category}</h1>
+    <p style="font-size:14px;opacity:0.8;margin-bottom:24px;">Generated for <strong>{audience}</strong> · Sender: <strong>{sender}</strong></p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;">
+      <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:14px;">
+        <p style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Prospects</p>
+        <p style="font-size:24px;font-weight:800;">{prospect_count}</p>
+      </div>
+      <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:14px;">
+        <p style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Target</p>
+        <p style="font-size:13px;font-weight:700;line-height:1.3;">{archetype}</p>
+      </div>
+      <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:14px;">
+        <p style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Channel</p>
+        <p style="font-size:18px;font-weight:800;">{channel}</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Print button -->
+  <div class="no-print" style="text-align:right;margin-bottom:20px;">
+    <button onclick="window.print()" style="background:#0f62a8;color:#fff;border:none;padding:10px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">🖨️ Save as PDF</button>
+  </div>
+
+  <!-- Prospect cards -->
+  {prospect_cards_html}
+
+  <!-- Footer -->
+  <div style="margin-top:30px;padding-top:20px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;">
+    <p>Generated by the Multi-Agent Marketing System &nbsp;·&nbsp; {generated_at}</p>
+    <p style="margin-top:4px;">Campaign ID: {execution_id}</p>
+  </div>
+
+</div>
+</body>
+</html>"""
+
+    filename = f"linkedin_report_{execution_id[:8]}_{datetime.utcnow().strftime('%Y%m%d')}.html"
+    return Response(
+        content=html,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 class UpdateContentRequest(BaseModel):
     """Schema for updating personalized content"""
     linkedin_message: Optional[str] = None
