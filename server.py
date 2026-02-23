@@ -27,6 +27,7 @@ import time
 from graph import build_graph
 from state import AgentState
 from database import get_db_session, Classification, EngagementHistory, Prospect, ExecutionDetail, APICallLog, AuditLog, SentEmail, FollowUpEmail
+from database import Base, engine as db_engine
 from config import LOG_LEVEL, MAILEROO_SMTP_HOST, MAILEROO_SMTP_PORT, MAILEROO_SMTP_USERNAME, MAILEROO_SMTP_PASSWORD, MAILEROO_FROM_EMAIL, MAILEROO_FROM_NAME, MAILEROO_USE_TLS
 
 # Configure logging
@@ -37,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-# ========================================
+
 # PYDANTIC SCHEMAS FOR INPUT VALIDATION
 # ========================================
 
@@ -297,6 +298,11 @@ session_manager = SessionManager()
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     logger.info("Starting Multi-Agent Marketing API Server")
+    try:
+        Base.metadata.create_all(bind=db_engine)
+        logger.info("Database tables verified/created OK")
+    except Exception as e:
+        logger.warning(f"DB create_all warning (non-fatal): {e}")
     yield
     logger.info("Shutting down Multi-Agent Marketing API Server")
 
