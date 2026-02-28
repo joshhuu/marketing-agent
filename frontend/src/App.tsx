@@ -33,40 +33,40 @@ const AppLayout = () => {
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} />
-      <div 
-        className="flex-1 flex flex-col transition-all duration-300" 
+      <div
+        className="flex-1 flex flex-col transition-all duration-300"
         style={{ marginLeft: sidebarCollapsed ? '64px' : '256px' }}
       >
         <NavBar collapsed={sidebarCollapsed} />
         <main className="flex-1 overflow-auto mt-16">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route 
-              path="/campaign" 
+            <Route
+              path="/campaign"
               element={
                 <ProtectedRoute allowedRoles={["admin", "user"]}>
                   <CampaignPage />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/history/:id" element={<CampaignDetail />} />
             <Route path="/prospects" element={<ProspectsPage />} />
-            <Route 
-              path="/sent-emails" 
+            <Route
+              path="/sent-emails"
               element={
                 <ProtectedRoute allowedRoles={["admin", "user"]}>
                   <SentEmailsPage />
                 </ProtectedRoute>
-              } 
+              }
             />
-            <Route 
-              path="/admin/analytics" 
+            <Route
+              path="/admin/analytics"
               element={
                 <ProtectedRoute allowedRoles={["admin"]}>
                   <AdminAnalyticsPage />
                 </ProtectedRoute>
-              } 
+              }
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
@@ -87,7 +87,7 @@ const App = () => {
             <Routes>
               {/* Public route */}
               <Route path="/welcome" element={<LandingPage />} />
-              
+
               {/* Protected routes */}
               <Route path="/*" element={<AppLayout />} />
             </Routes>
